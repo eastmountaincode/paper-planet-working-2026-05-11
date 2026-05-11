@@ -25,6 +25,11 @@
 ._*
 *.pem
 
+# local preview media symlinks; production media is served from R2
+/public/media/rooms/*.mp4
+/public/media/rooms/._*
+/public/media/._*
+
 # debug
 npm-debug.log*
 yarn-debug.log*

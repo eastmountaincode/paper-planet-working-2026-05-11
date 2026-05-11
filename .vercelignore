@@ -1,0 +1,10 @@
+# Local preview media symlinks. Production loads these files from R2 via
+# NEXT_PUBLIC_MEDIA_BASE_URL, so Vercel should not try to copy them.
+public/media/rooms/*.mp4
+public/media/rooms/._*
+public/media/._*
+
+# macOS metadata files from the external drive.
+._*
+**/._*
+.DS_Store

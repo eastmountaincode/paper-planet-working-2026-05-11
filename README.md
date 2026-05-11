@@ -16,6 +16,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Local Media
+
+Production media is served from R2 using `NEXT_PUBLIC_MEDIA_BASE_URL`. Do not
+deploy local MP4 files or the local preview symlinks in `public/media`.
+
+To recreate local fallback symlinks when developing without an R2 media URL:
+
+```bash
+npm run media:link
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
