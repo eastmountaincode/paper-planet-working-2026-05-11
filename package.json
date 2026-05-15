@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "media:link": "node scripts/link-local-media.mjs",
+    "font:build": "node scripts/build-paper-planet-font.mjs",
+    "playlists:generate": "node scripts/generate-playlists.mjs",
     "upload:r2": "node scripts/upload-r2.mjs"
   },
   "dependencies": {
@@ -22,7 +23,13 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "potrace": "^2.1.8",
+    "sharp": "^0.34.5",
+    "svg2ttf": "^6.1.0",
+    "svgicons2svgfont": "^16.0.0",
     "tailwindcss": "^4",
+    "ttf2woff": "^3.0.0",
+    "ttf2woff2": "^8.0.1",
     "typescript": "^5"
   }
 }

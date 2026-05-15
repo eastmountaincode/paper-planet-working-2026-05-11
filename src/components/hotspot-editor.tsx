@@ -10,21 +10,28 @@ import {
 } from "react";
 import type {
   Hotspot,
+  HotspotAction,
   PercentPoint,
   PolygonHotspot,
   SceneSlug,
 } from "@/lib/scenes";
 import { sceneSlugs, scenes } from "@/lib/scenes";
 
-const emptyPolygon = (scene: SceneSlug, index: number): PolygonHotspot => ({
-  id: `${scene}-hotspot-${Date.now().toString(36)}-${index + 1}`,
-  label: "New hotspot",
-  shape: "polygon",
-  points: [],
-  action: {
-    type: "navigate",
-    target: scene === "construction" ? "hq" : "construction",
-  },
+const editorStorageKey = (scene: SceneSlug) =>
+  `paper-planet-hotspots-v2:${scene}`;
+const hiddenStorageKey = (scene: SceneSlug) =>
+  `paper-planet-hotspots-hidden:${scene}`;
+const legacyDraftStorageKey = (scene: SceneSlug) =>
+  `paper-planet-hotspot-drafts:${scene}`;
+
+const emptyHotspotsByScene = (): Record<SceneSlug, Hotspot[]> => ({
+  construction: [],
+  hq: [],
+});
+
+const emptyHiddenIdsByScene = (): Record<SceneSlug, string[]> => ({
+  construction: [],
+  hq: [],
 });
 
 const percent = (value: number) => Number(value.toFixed(2));
@@ -32,29 +39,32 @@ const percent = (value: number) => Number(value.toFixed(2));
 const pointsToString = (points: PercentPoint[]) =>
   points.map((point) => `${point.x},${point.y}`).join(" ");
 
-const storageKey = (scene: SceneSlug) => `paper-planet-hotspot-drafts:${scene}`;
+function createHotspotId(scene: SceneSlug) {
+  const fallbackId = `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 
-const emptyDraftsByScene = (): Record<SceneSlug, PolygonHotspot[]> => ({
-  construction: [],
-  hq: [],
-});
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8)
+      : fallbackId;
 
-const loadDraftsByScene = () => {
-  const draftsByScene = emptyDraftsByScene();
+  return `${scene}-hotspot-${id}`;
+}
 
-  if (typeof window === "undefined") {
-    return draftsByScene;
-  }
-
-  for (const slug of sceneSlugs) {
-    const stored = window.localStorage.getItem(storageKey(slug));
-    draftsByScene[slug] = stored
-      ? (JSON.parse(stored) as PolygonHotspot[])
-      : [];
-  }
-
-  return draftsByScene;
-};
+function createPolygonHotspot(scene: SceneSlug): PolygonHotspot {
+  return {
+    id: createHotspotId(scene),
+    label: "New hotspot",
+    zIndex: 0,
+    shape: "polygon",
+    points: [],
+    action: {
+      type: "navigate",
+      target: scene === "construction" ? "hq" : "construction",
+    },
+  };
+}
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) {
@@ -69,12 +79,32 @@ function formatTime(seconds: number) {
   return `${minutes}:${remainingSeconds}`;
 }
 
-function getHotspotLabel(hotspot: Hotspot) {
+function getHotspotActionLabel(hotspot: Hotspot) {
   if (hotspot.action.type === "navigate") {
     return `goes to ${scenes[hotspot.action.target].title}`;
   }
 
   return `emails ${hotspot.action.email}`;
+}
+
+function getHotspotPointCount(hotspot: Hotspot) {
+  return hotspot.shape === "polygon" ? hotspot.points.length : 4;
+}
+
+function getHotspotZIndex(hotspot: Hotspot) {
+  return hotspot.zIndex ?? 0;
+}
+
+function sortHotspotsByZOrder(hotspots: Hotspot[]) {
+  return [...hotspots].sort(
+    (a, b) => getHotspotZIndex(a) - getHotspotZIndex(b),
+  );
+}
+
+function sortHotspotsFrontFirst(hotspots: Hotspot[]) {
+  return [...hotspots].sort(
+    (a, b) => getHotspotZIndex(b) - getHotspotZIndex(a),
+  );
 }
 
 function normalizeDrawnPoints(points: PercentPoint[]) {
@@ -96,43 +126,518 @@ function normalizeDrawnPoints(points: PercentPoint[]) {
   ];
 }
 
+function hotspotSignature(hotspot: Hotspot) {
+  return JSON.stringify({
+    shape: hotspot.shape,
+    zIndex: getHotspotZIndex(hotspot),
+    action: hotspot.action,
+    geometry:
+      hotspot.shape === "polygon"
+        ? hotspot.points
+        : {
+            x: hotspot.rect.x,
+            y: hotspot.rect.y,
+            width: hotspot.rect.width,
+            height: hotspot.rect.height,
+          },
+  });
+}
+
+function withUniqueHotspotIds(scene: SceneSlug, hotspots: Hotspot[]) {
+  const ids = new Set<string>();
+
+  return hotspots.map((hotspot) => {
+    if (!ids.has(hotspot.id)) {
+      ids.add(hotspot.id);
+      return hotspot;
+    }
+
+    const nextHotspot = {
+      ...hotspot,
+      id: createHotspotId(scene),
+    } as Hotspot;
+
+    ids.add(nextHotspot.id);
+    return nextHotspot;
+  });
+}
+
+function dedupeHotspots(scene: SceneSlug, hotspots: Hotspot[]) {
+  const signatureIndexes = new Map<string, number>();
+  const uniqueHotspots: Hotspot[] = [];
+
+  for (const hotspot of hotspots) {
+    const signature = hotspotSignature(hotspot);
+    const existingIndex = signatureIndexes.get(signature);
+
+    if (existingIndex !== undefined) {
+      const existingHotspot = uniqueHotspots[existingIndex];
+
+      if (
+        existingHotspot.label === "New hotspot" &&
+        hotspot.label !== "New hotspot"
+      ) {
+        uniqueHotspots[existingIndex] = hotspot;
+      }
+
+      continue;
+    }
+
+    signatureIndexes.set(signature, uniqueHotspots.length);
+    uniqueHotspots.push(hotspot);
+  }
+
+  return withUniqueHotspotIds(scene, uniqueHotspots);
+}
+
+function parseStoredHotspots(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? (parsed as Hotspot[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseStoredHiddenIds(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadHotspotsByScene() {
+  const hotspotsByScene = emptyHotspotsByScene();
+
+  if (typeof window === "undefined") {
+    for (const slug of sceneSlugs) {
+      hotspotsByScene[slug] = scenes[slug].hotspots;
+    }
+
+    return hotspotsByScene;
+  }
+
+  for (const slug of sceneSlugs) {
+    const storedHotspots = parseStoredHotspots(
+      window.localStorage.getItem(editorStorageKey(slug)),
+    );
+
+    if (storedHotspots) {
+      hotspotsByScene[slug] = dedupeHotspots(slug, storedHotspots);
+      continue;
+    }
+
+    const legacyDrafts = parseStoredHotspots(
+      window.localStorage.getItem(legacyDraftStorageKey(slug)),
+    );
+
+    hotspotsByScene[slug] = dedupeHotspots(slug, [
+      ...scenes[slug].hotspots,
+      ...(legacyDrafts ?? []),
+    ]);
+  }
+
+  return hotspotsByScene;
+}
+
+function loadHiddenIdsByScene() {
+  const hiddenIdsByScene = emptyHiddenIdsByScene();
+
+  if (typeof window === "undefined") {
+    return hiddenIdsByScene;
+  }
+
+  for (const slug of sceneSlugs) {
+    hiddenIdsByScene[slug] = parseStoredHiddenIds(
+      window.localStorage.getItem(hiddenStorageKey(slug)),
+    );
+  }
+
+  return hiddenIdsByScene;
+}
+
+function serializeHotspots(hotspots: Hotspot[]) {
+  return JSON.stringify(hotspots, null, 2);
+}
+
+type HotspotEditorSidebarProps = {
+  sceneSlug: SceneSlug;
+  hotspots: Hotspot[];
+  hotspotsFrontFirst: Hotspot[];
+  hiddenIds: string[];
+  selectedId: string | null;
+  selectedHotspot: Hotspot | null;
+  status: string;
+  onSaveToAppFile: () => void;
+  onCopySceneHotspots: () => void;
+  onCopySelected: () => void;
+  onResetToAppHotspots: () => void;
+  onClearHotspots: () => void;
+  onSelectHotspot: (id: string) => void;
+  onToggleHidden: (id: string) => void;
+  onDeleteHotspot: (id: string) => void;
+  onUpdateSelectedHotspot: (updates: Partial<Hotspot>) => void;
+  onUpdateSelectedAction: (action: HotspotAction) => void;
+  onMoveSelectedZIndex: (direction: "back" | "front") => void;
+};
+
+function HotspotEditorSidebar({
+  sceneSlug,
+  hotspots,
+  hotspotsFrontFirst,
+  hiddenIds,
+  selectedId,
+  selectedHotspot,
+  status,
+  onSaveToAppFile,
+  onCopySceneHotspots,
+  onCopySelected,
+  onResetToAppHotspots,
+  onClearHotspots,
+  onSelectHotspot,
+  onToggleHidden,
+  onDeleteHotspot,
+  onUpdateSelectedHotspot,
+  onUpdateSelectedAction,
+  onMoveSelectedZIndex,
+}: HotspotEditorSidebarProps) {
+  return (
+    <aside className="h-full overflow-y-auto bg-black p-4">
+      <div className="border-b border-white/15 pb-4">
+        <h1 className="text-lg font-semibold">Hotspot Editor</h1>
+        <p className="mt-2 text-sm leading-6 text-white/65">
+          Draw on the video to create a clickable area. Select a hotspot to
+          rename it, change its action, hide it, delete it, or save the current
+          scene back into the app.
+        </p>
+      </div>
+
+      <div className="grid gap-2 border-b border-white/15 py-4">
+        <button
+          type="button"
+          onClick={onSaveToAppFile}
+          className="bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-white/85"
+        >
+          Save Hotspots to App
+        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onCopySceneHotspots}
+            className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
+          >
+            Copy Scene JSON
+          </button>
+          <button
+            type="button"
+            onClick={onCopySelected}
+            className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
+          >
+            Copy Selected JSON
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onResetToAppHotspots}
+            className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
+          >
+            Reset to App
+          </button>
+          <button
+            type="button"
+            onClick={onClearHotspots}
+            className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
+          >
+            Clear Scene
+          </button>
+        </div>
+        {status ? <p className="font-mono text-xs text-white/70">{status}</p> : null}
+      </div>
+
+      <div className="border-b border-white/15 py-4">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-white/70">
+          Hotspots
+        </h2>
+        <div className="grid gap-2">
+          {hotspots.length ? (
+            hotspotsFrontFirst.map((hotspot) => {
+              const isHidden = hiddenIds.includes(hotspot.id);
+
+              return (
+                <div
+                  key={hotspot.id}
+                  className={[
+                    "grid gap-2 border p-3 text-sm transition",
+                    hotspot.id === selectedId
+                      ? "border-white bg-white/10"
+                      : "border-white/15",
+                  ].join(" ")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectHotspot(hotspot.id)}
+                    className="text-left"
+                  >
+                    <span className="block font-medium">{hotspot.label}</span>
+                    <span className="text-xs text-white/55">
+                      {hotspot.shape}, {getHotspotPointCount(hotspot)} points,
+                      z {getHotspotZIndex(hotspot)},{" "}
+                      {getHotspotActionLabel(hotspot)}
+                    </span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onToggleHidden(hotspot.id)}
+                      className="border border-white/20 px-2 py-1 text-xs transition hover:border-white"
+                    >
+                      {isHidden ? "Show" : "Hide"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteHotspot(hotspot.id)}
+                      className="border border-white/20 px-2 py-1 text-xs transition hover:border-white"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p className="text-sm text-white/55">No hotspots yet.</p>
+          )}
+        </div>
+      </div>
+
+      {selectedHotspot ? (
+        <form className="grid gap-3 py-4">
+          <label className="grid gap-1 text-sm">
+            ID
+            <input
+              value={selectedHotspot.id}
+              onChange={(event) =>
+                onUpdateSelectedHotspot({ id: event.target.value })
+              }
+              className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Label
+            <input
+              value={selectedHotspot.label}
+              onChange={(event) =>
+                onUpdateSelectedHotspot({ label: event.target.value })
+              }
+              className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Z order
+            <input
+              type="number"
+              step={1}
+              value={getHotspotZIndex(selectedHotspot)}
+              onChange={(event) =>
+                onUpdateSelectedHotspot({
+                  zIndex: Number(event.target.value) || 0,
+                })
+              }
+              className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onMoveSelectedZIndex("back")}
+              className="border border-white/20 px-3 py-2 text-sm transition hover:border-white"
+            >
+              Send Back
+            </button>
+            <button
+              type="button"
+              onClick={() => onMoveSelectedZIndex("front")}
+              className="border border-white/20 px-3 py-2 text-sm transition hover:border-white"
+            >
+              Bring Front
+            </button>
+          </div>
+          <label className="grid gap-1 text-sm">
+            Action
+            <select
+              value={selectedHotspot.action.type}
+              onChange={(event) => {
+                if (event.target.value === "mailto") {
+                  onUpdateSelectedAction({
+                    type: "mailto",
+                    email: "paperplanetrecords@gmail.com",
+                    subject: "Paper Planet Records",
+                  });
+                  return;
+                }
+
+                onUpdateSelectedAction({
+                  type: "navigate",
+                  target: sceneSlug === "construction" ? "hq" : "construction",
+                });
+              }}
+              className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+            >
+              <option value="navigate">Navigate to scene</option>
+              <option value="mailto">Open email prompt</option>
+            </select>
+          </label>
+
+          {selectedHotspot.action.type === "navigate" ? (
+            <label className="grid gap-1 text-sm">
+              Destination
+              <select
+                value={selectedHotspot.action.target}
+                onChange={(event) =>
+                  onUpdateSelectedAction({
+                    type: "navigate",
+                    target: event.target.value as SceneSlug,
+                  })
+                }
+                className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+              >
+                {sceneSlugs.map((slug) => (
+                  <option key={slug} value={slug}>
+                    {scenes[slug].title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <label className="grid gap-1 text-sm">
+                Email
+                <input
+                  value={selectedHotspot.action.email}
+                  onChange={(event) =>
+                    onUpdateSelectedAction({
+                      type: "mailto",
+                      email: event.target.value,
+                      subject:
+                        selectedHotspot.action.type === "mailto"
+                          ? selectedHotspot.action.subject
+                          : undefined,
+                    })
+                  }
+                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Subject
+                <input
+                  value={selectedHotspot.action.subject ?? ""}
+                  onChange={(event) =>
+                    onUpdateSelectedAction({
+                      type: "mailto",
+                      email:
+                        selectedHotspot.action.type === "mailto"
+                          ? selectedHotspot.action.email
+                          : "paperplanetrecords@gmail.com",
+                      subject: event.target.value,
+                    })
+                  }
+                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+                />
+              </label>
+            </>
+          )}
+        </form>
+      ) : (
+        <p className="py-4 text-sm text-white/55">Select a hotspot to edit it.</p>
+      )}
+    </aside>
+  );
+}
+
 export function HotspotEditor() {
   const [sceneSlug, setSceneSlug] = useState<SceneSlug>("construction");
-  const [draftsByScene, setDraftsByScene] = useState(loadDraftsByScene);
+  const [hotspotsByScene, setHotspotsByScene] = useState(loadHotspotsByScene);
+  const [hiddenIdsByScene, setHiddenIdsByScene] = useState(loadHiddenIdsByScene);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activePoints, setActivePoints] = useState<PercentPoint[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [copyStatus, setCopyStatus] = useState("");
+  const [status, setStatus] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isDrawingRef = useRef(false);
 
   const scene = scenes[sceneSlug];
-  const drafts = draftsByScene[sceneSlug];
-  const selectedDraft = drafts.find((draft) => draft.id === selectedId) ?? null;
+  const hotspots = hotspotsByScene[sceneSlug];
+  const hiddenIds = hiddenIdsByScene[sceneSlug];
+  const selectedHotspot =
+    hotspots.find((hotspot) => hotspot.id === selectedId) ?? null;
+  const orderedHotspots = useMemo(
+    () => sortHotspotsByZOrder(hotspots),
+    [hotspots],
+  );
+  const hotspotsFrontFirst = useMemo(
+    () => sortHotspotsFrontFirst(hotspots),
+    [hotspots],
+  );
   const aspectRatio = useMemo(
     () => `${scene.video.width} / ${scene.video.height}`,
     [scene.video.height, scene.video.width],
   );
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey(sceneSlug), JSON.stringify(drafts));
-  }, [drafts, sceneSlug]);
+    window.localStorage.setItem(
+      editorStorageKey(sceneSlug),
+      JSON.stringify(hotspots),
+    );
+  }, [hotspots, sceneSlug]);
 
-  function setSceneDrafts(
-    updater:
-      | PolygonHotspot[]
-      | ((currentDrafts: PolygonHotspot[]) => PolygonHotspot[]),
+  useEffect(() => {
+    window.localStorage.setItem(
+      hiddenStorageKey(sceneSlug),
+      JSON.stringify(hiddenIds),
+    );
+  }, [hiddenIds, sceneSlug]);
+
+  function setSceneHotspots(
+    updater: Hotspot[] | ((currentHotspots: Hotspot[]) => Hotspot[]),
   ) {
-    setDraftsByScene((currentByScene) => {
-      const currentDrafts = currentByScene[sceneSlug];
-      const nextDrafts =
-        typeof updater === "function" ? updater(currentDrafts) : updater;
+    setHotspotsByScene((currentByScene) => {
+      const currentHotspots = currentByScene[sceneSlug];
+      const nextHotspots =
+        typeof updater === "function" ? updater(currentHotspots) : updater;
 
       return {
         ...currentByScene,
-        [sceneSlug]: nextDrafts,
+        [sceneSlug]: dedupeHotspots(sceneSlug, nextHotspots),
+      };
+    });
+  }
+
+  function setSceneHiddenIds(
+    updater: string[] | ((currentHiddenIds: string[]) => string[]),
+  ) {
+    setHiddenIdsByScene((currentByScene) => {
+      const currentHiddenIds = currentByScene[sceneSlug];
+      const nextHiddenIds =
+        typeof updater === "function" ? updater(currentHiddenIds) : updater;
+
+      return {
+        ...currentByScene,
+        [sceneSlug]: Array.from(new Set(nextHiddenIds)),
       };
     });
   }
@@ -151,14 +656,18 @@ export function HotspotEditor() {
   }
 
   function handlePointerDown(event: PointerEvent<SVGSVGElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
-    setIsDrawing(true);
+    isDrawingRef.current = true;
     setActivePoints([pointFromEvent(event)]);
-    setCopyStatus("");
+    setStatus("");
   }
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (!isDrawing) {
+    if (!isDrawingRef.current) {
       return;
     }
 
@@ -175,74 +684,158 @@ export function HotspotEditor() {
     });
   }
 
+  function finishDrawing(points: PercentPoint[]) {
+    if (points.length < 2) {
+      return [];
+    }
+
+    const normalizedPoints = normalizeDrawnPoints(points);
+    const nextZIndex =
+      hotspots.length > 0
+        ? Math.max(...hotspots.map((hotspot) => getHotspotZIndex(hotspot))) + 1
+        : 0;
+    const nextHotspot: PolygonHotspot = {
+      ...createPolygonHotspot(sceneSlug),
+      points: normalizedPoints,
+      zIndex: nextZIndex,
+    };
+
+    setSceneHotspots((currentHotspots) => [...currentHotspots, nextHotspot]);
+    setSelectedId(nextHotspot.id);
+    setStatus("Hotspot created. Name it, choose an action, then save.");
+
+    return [];
+  }
+
   function handlePointerUp(event: PointerEvent<SVGSVGElement>) {
-    if (!isDrawing) {
+    if (!isDrawingRef.current) {
       return;
     }
 
     event.currentTarget.releasePointerCapture(event.pointerId);
-    setIsDrawing(false);
-
-    setActivePoints((points) => {
-      if (points.length < 2) {
-        return [];
-      }
-
-      const normalizedPoints = normalizeDrawnPoints(points);
-
-      const nextDraft = {
-        ...emptyPolygon(sceneSlug, drafts.length),
-        points: normalizedPoints,
-      };
-
-      setSceneDrafts((currentDrafts) => [...currentDrafts, nextDraft]);
-      setSelectedId(nextDraft.id);
-      return [];
-    });
+    isDrawingRef.current = false;
+    setActivePoints(finishDrawing);
   }
 
-  function updateSelectedDraft(updates: Partial<PolygonHotspot>) {
-    if (!selectedDraft) {
+  function cancelDrawing() {
+    isDrawingRef.current = false;
+    setActivePoints([]);
+  }
+
+  function updateSelectedHotspot(updates: Partial<Hotspot>) {
+    if (!selectedHotspot) {
       return;
     }
 
-    setSceneDrafts((currentDrafts) =>
-      currentDrafts.map((draft) =>
-        draft.id === selectedDraft.id ? { ...draft, ...updates } : draft,
+    setSceneHotspots((currentHotspots) =>
+      currentHotspots.map((hotspot) =>
+        hotspot.id === selectedHotspot.id
+          ? ({ ...hotspot, ...updates } as Hotspot)
+          : hotspot,
       ),
+    );
+
+    if (typeof updates.id === "string") {
+      setSelectedId(updates.id);
+    }
+  }
+
+  function updateSelectedAction(action: HotspotAction) {
+    updateSelectedHotspot({ action });
+  }
+
+  function deleteHotspot(id: string) {
+    setSceneHotspots((currentHotspots) =>
+      currentHotspots.filter((hotspot) => hotspot.id !== id),
+    );
+    setSceneHiddenIds((currentHiddenIds) =>
+      currentHiddenIds.filter((hiddenId) => hiddenId !== id),
+    );
+
+    if (selectedId === id) {
+      setSelectedId(null);
+    }
+
+    setStatus("Hotspot deleted.");
+  }
+
+  function clearHotspots() {
+    setSceneHotspots([]);
+    setSceneHiddenIds([]);
+    setSelectedId(null);
+    setStatus("All hotspots removed from this scene in the editor.");
+  }
+
+  function resetToAppHotspots() {
+    setSceneHotspots(scene.hotspots);
+    setSceneHiddenIds([]);
+    setSelectedId(null);
+    setStatus("Reset this scene to the hotspots currently saved in the app.");
+  }
+
+  function toggleHidden(id: string) {
+    setSceneHiddenIds((currentHiddenIds) =>
+      currentHiddenIds.includes(id)
+        ? currentHiddenIds.filter((hiddenId) => hiddenId !== id)
+        : [...currentHiddenIds, id],
     );
   }
 
-  function updateSelectedAction(action: PolygonHotspot["action"]) {
-    updateSelectedDraft({ action });
+  function moveSelectedZIndex(direction: "back" | "front") {
+    if (!selectedHotspot) {
+      return;
+    }
+
+    const zIndexes = hotspots.map((hotspot) => getHotspotZIndex(hotspot));
+    const currentZIndex = getHotspotZIndex(selectedHotspot);
+    const nextZIndex =
+      direction === "front"
+        ? Math.max(currentZIndex + 1, ...zIndexes) + 1
+        : Math.min(currentZIndex - 1, ...zIndexes) - 1;
+
+    updateSelectedHotspot({ zIndex: nextZIndex });
   }
 
   async function copyText(text: string, message: string) {
     await navigator.clipboard.writeText(text);
-    setCopyStatus(message);
+    setStatus(message);
   }
 
   function copySelected() {
-    if (!selectedDraft) {
-      setCopyStatus("Select a draft hotspot first.");
+    if (!selectedHotspot) {
+      setStatus("Select a hotspot first.");
       return;
     }
 
-    void copyText(JSON.stringify(selectedDraft, null, 2), "Copied hotspot.");
+    void copyText(serializeHotspots([selectedHotspot]), "Copied selected JSON.");
   }
 
-  function copyAll() {
-    const allHotspots = [...scene.hotspots, ...drafts];
-    void copyText(
-      `hotspots: ${JSON.stringify(allHotspots, null, 2)}`,
-      "Copied full hotspots array.",
-    );
+  function copySceneHotspots() {
+    void copyText(serializeHotspots(hotspots), "Copied scene hotspots JSON.");
   }
 
-  function clearDrafts() {
-    setSceneDrafts([]);
-    setSelectedId(null);
-    setCopyStatus("Cleared local drafts.");
+  async function saveToAppFile() {
+    setStatus("Saving...");
+
+    const response = await fetch("/api/dev/hotspots", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        scene: sceneSlug,
+        hotspots,
+      }),
+    });
+
+    const result = (await response.json()) as { error?: string; count?: number };
+
+    if (!response.ok) {
+      setStatus(result.error ?? "Save failed.");
+      return;
+    }
+
+    setStatus(`Saved ${result.count ?? hotspots.length} hotspot(s) to the app.`);
   }
 
   function seekTo(value: number) {
@@ -273,18 +866,61 @@ export function HotspotEditor() {
     setIsPlaying(false);
   }
 
+  function renderHotspotShape(hotspot: Hotspot) {
+    if (hiddenIds.includes(hotspot.id)) {
+      return null;
+    }
+
+    const isSelected = hotspot.id === selectedId;
+    const fill = isSelected ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.14)";
+    const stroke = isSelected ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.78)";
+
+    const pointerProps = {
+      onPointerDown: (event: PointerEvent<SVGElement>) => {
+        event.stopPropagation();
+        setSelectedId(hotspot.id);
+        setStatus("");
+      },
+    };
+
+    return hotspot.shape === "rect" ? (
+      <rect
+        key={hotspot.id}
+        x={hotspot.rect.x}
+        y={hotspot.rect.y}
+        width={hotspot.rect.width}
+        height={hotspot.rect.height}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth="0.3"
+        vectorEffect="non-scaling-stroke"
+        {...pointerProps}
+      />
+    ) : (
+      <polygon
+        key={hotspot.id}
+        points={pointsToString(hotspot.points)}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth="0.3"
+        vectorEffect="non-scaling-stroke"
+        {...pointerProps}
+      />
+    );
+  }
+
   return (
-    <main className="min-h-dvh bg-[#161410] text-[#f5efe2]">
-      <div className="mx-auto grid min-h-dvh w-full max-w-[1720px] gap-5 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_390px]">
-        <section className="flex min-w-0 flex-col gap-4">
+    <main className="min-h-dvh bg-black text-white lg:h-dvh lg:overflow-hidden">
+      <div className="grid min-h-dvh w-full gap-px bg-neutral-800 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="flex min-w-0 flex-col gap-4 bg-black p-4 lg:h-dvh lg:overflow-y-auto">
           <nav className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href={`/rooms/${sceneSlug}?hotspots=1`}
-              className="font-mono text-xs uppercase tracking-[0.24em] text-[#d9c9a3]"
+              className="font-mono text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white"
             >
-              Paper Planet Hotspot Tool
+              Paper Planet Hotspots
             </Link>
-            <label className="flex items-center gap-2 text-sm text-[#f5efe2]/70">
+            <label className="flex items-center gap-2 text-sm text-white/70">
               Scene
               <select
                 value={sceneSlug}
@@ -292,10 +928,10 @@ export function HotspotEditor() {
                   setSceneSlug(event.target.value as SceneSlug);
                   setSelectedId(null);
                   setActivePoints([]);
-                  setIsDrawing(false);
-                  setCopyStatus("");
+                  cancelDrawing();
+                  setStatus("");
                 }}
-                className="rounded-sm border border-[#f5efe2]/20 bg-[#242018] px-3 py-2 text-[#f5efe2] outline-none"
+                className="border border-white/25 bg-black px-3 py-2 text-white outline-none focus:border-white"
               >
                 {sceneSlugs.map((slug) => (
                   <option key={slug} value={slug}>
@@ -307,7 +943,7 @@ export function HotspotEditor() {
           </nav>
 
           <div
-            className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] overflow-hidden bg-black shadow-2xl shadow-black/45 touch-none"
+            className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] overflow-hidden bg-black touch-none"
             style={{ aspectRatio }}
           >
             <video
@@ -337,64 +973,15 @@ export function HotspotEditor() {
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
-              onPointerCancel={() => {
-                setIsDrawing(false);
-                setActivePoints([]);
-              }}
+              onPointerCancel={cancelDrawing}
             >
-              {scene.hotspots.map((hotspot) =>
-                hotspot.shape === "rect" ? (
-                  <rect
-                    key={hotspot.id}
-                    x={hotspot.rect.x}
-                    y={hotspot.rect.y}
-                    width={hotspot.rect.width}
-                    height={hotspot.rect.height}
-                    fill="rgba(247, 211, 106, 0.15)"
-                    stroke="rgba(247, 211, 106, 0.9)"
-                    strokeWidth="0.28"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ) : (
-                  <polygon
-                    key={hotspot.id}
-                    points={pointsToString(hotspot.points)}
-                    fill="rgba(247, 211, 106, 0.15)"
-                    stroke="rgba(247, 211, 106, 0.9)"
-                    strokeWidth="0.28"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ),
-              )}
-
-              {drafts.map((draft) => (
-                <polygon
-                  key={draft.id}
-                  points={pointsToString(draft.points)}
-                  fill={
-                    draft.id === selectedId
-                      ? "rgba(73, 222, 128, 0.26)"
-                      : "rgba(56, 189, 248, 0.18)"
-                  }
-                  stroke={
-                    draft.id === selectedId
-                      ? "rgba(134, 239, 172, 1)"
-                      : "rgba(56, 189, 248, 0.95)"
-                  }
-                  strokeWidth="0.32"
-                  vectorEffect="non-scaling-stroke"
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                    setSelectedId(draft.id);
-                  }}
-                />
-              ))}
+              {orderedHotspots.map((hotspot) => renderHotspotShape(hotspot))}
 
               {activePoints.length > 1 ? (
                 <polyline
                   points={pointsToString(activePoints)}
                   fill="none"
-                  stroke="rgba(134, 239, 172, 1)"
+                  stroke="rgba(255,255,255,1)"
                   strokeWidth="0.42"
                   vectorEffect="non-scaling-stroke"
                 />
@@ -402,11 +989,11 @@ export function HotspotEditor() {
             </svg>
           </div>
 
-          <div className="grid gap-3 border-t border-[#f5efe2]/10 pt-3 font-mono text-xs text-[#f5efe2]/70 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+          <div className="grid gap-3 border-t border-white/15 pt-3 font-mono text-xs text-white/70 sm:grid-cols-[auto_1fr_auto] sm:items-center">
             <button
               type="button"
               onClick={togglePlayback}
-              className="rounded-sm border border-[#f5efe2]/20 px-3 py-2 text-[#f5efe2] transition hover:border-[#f5efe2]/50"
+              className="border border-white/25 px-3 py-2 text-white transition hover:border-white"
             >
               {isPlaying ? "Pause" : "Play"}
             </button>
@@ -417,7 +1004,7 @@ export function HotspotEditor() {
               step={0.1}
               value={currentTime}
               onChange={(event) => seekTo(Number(event.target.value))}
-              className="w-full accent-[#d9c9a3]"
+              className="w-full accent-white"
               aria-label="Video time"
             />
             <p>
@@ -427,182 +1014,29 @@ export function HotspotEditor() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col gap-4 border border-[#f5efe2]/10 bg-black/20 p-4">
-          <div>
-            <h1 className="text-lg font-semibold">Draw Clickable Areas</h1>
-            <p className="mt-2 text-sm leading-6 text-[#f5efe2]/70">
-              Pause on the useful frame, draw around the target, then assign the
-              action. Drafts save in this browser until copied into scene data.
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <button
-              type="button"
-              onClick={copyAll}
-              className="rounded-sm bg-[#d9c9a3] px-3 py-2 text-sm font-medium text-[#161410] transition hover:bg-[#f5efe2]"
-            >
-              Copy Scene Hotspots
-            </button>
-            <button
-              type="button"
-              onClick={copySelected}
-              className="rounded-sm border border-[#f5efe2]/20 px-3 py-2 text-sm transition hover:border-[#f5efe2]/50"
-            >
-              Copy Selected Draft
-            </button>
-            <button
-              type="button"
-              onClick={clearDrafts}
-              className="rounded-sm border border-[#f97316]/40 px-3 py-2 text-sm text-[#fdba74] transition hover:border-[#fdba74]"
-            >
-              Clear Drafts
-            </button>
-            {copyStatus ? (
-              <p className="font-mono text-xs text-[#86efac]">{copyStatus}</p>
-            ) : null}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto border-t border-[#f5efe2]/10 pt-4">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#d9c9a3]">
-              Drafts
-            </h2>
-            <div className="grid gap-2">
-              {drafts.length ? (
-                drafts.map((draft) => (
-                  <button
-                    key={draft.id}
-                    type="button"
-                    onClick={() => setSelectedId(draft.id)}
-                    className={[
-                      "rounded-sm border px-3 py-2 text-left text-sm transition",
-                      draft.id === selectedId
-                        ? "border-[#86efac] bg-[#86efac]/10"
-                        : "border-[#f5efe2]/10 hover:border-[#f5efe2]/35",
-                    ].join(" ")}
-                  >
-                    <span className="block font-medium">{draft.label}</span>
-                    <span className="text-xs text-[#f5efe2]/55">
-                      {draft.points.length} points, {getHotspotLabel(draft)}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <p className="text-sm text-[#f5efe2]/55">No draft shapes yet.</p>
-              )}
-            </div>
-          </div>
-
-          {selectedDraft ? (
-            <form className="grid gap-3 border-t border-[#f5efe2]/10 pt-4">
-              <label className="grid gap-1 text-sm">
-                ID
-                <input
-                  value={selectedDraft.id}
-                  onChange={(event) => {
-                    updateSelectedDraft({ id: event.target.value });
-                    setSelectedId(event.target.value);
-                  }}
-                  className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Label
-                <input
-                  value={selectedDraft.label}
-                  onChange={(event) =>
-                    updateSelectedDraft({ label: event.target.value })
-                  }
-                  className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Action
-                <select
-                  value={selectedDraft.action.type}
-                  onChange={(event) => {
-                    if (event.target.value === "mailto") {
-                      updateSelectedAction({
-                        type: "mailto",
-                        email: "paperplanetrecords@gmail.com",
-                        subject: "Paper Planet Records",
-                      });
-                      return;
-                    }
-
-                    updateSelectedAction({
-                      type: "navigate",
-                      target: sceneSlug === "construction" ? "hq" : "construction",
-                    });
-                  }}
-                  className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                >
-                  <option value="navigate">Navigate to scene</option>
-                  <option value="mailto">Open email prompt</option>
-                </select>
-              </label>
-
-              {selectedDraft.action.type === "navigate" ? (
-                <label className="grid gap-1 text-sm">
-                  Destination
-                  <select
-                    value={selectedDraft.action.target}
-                    onChange={(event) =>
-                      updateSelectedAction({
-                        type: "navigate",
-                        target: event.target.value as SceneSlug,
-                      })
-                    }
-                    className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                  >
-                    {sceneSlugs.map((slug) => (
-                      <option key={slug} value={slug}>
-                        {scenes[slug].title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <>
-                  <label className="grid gap-1 text-sm">
-                    Email
-                    <input
-                      value={selectedDraft.action.email}
-                      onChange={(event) =>
-                        updateSelectedAction({
-                          type: "mailto",
-                          email: event.target.value,
-                          subject:
-                            selectedDraft.action.type === "mailto"
-                              ? selectedDraft.action.subject
-                              : undefined,
-                        })
-                      }
-                      className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Subject
-                    <input
-                      value={selectedDraft.action.subject ?? ""}
-                      onChange={(event) =>
-                        updateSelectedAction({
-                          type: "mailto",
-                          email:
-                            selectedDraft.action.type === "mailto"
-                              ? selectedDraft.action.email
-                              : "paperplanetrecords@gmail.com",
-                          subject: event.target.value,
-                        })
-                      }
-                      className="rounded-sm border border-[#f5efe2]/15 bg-[#242018] px-3 py-2 outline-none focus:border-[#d9c9a3]"
-                    />
-                  </label>
-                </>
-              )}
-            </form>
-          ) : null}
-        </aside>
+        <HotspotEditorSidebar
+          sceneSlug={sceneSlug}
+          hotspots={hotspots}
+          hotspotsFrontFirst={hotspotsFrontFirst}
+          hiddenIds={hiddenIds}
+          selectedId={selectedId}
+          selectedHotspot={selectedHotspot}
+          status={status}
+          onSaveToAppFile={() => void saveToAppFile()}
+          onCopySceneHotspots={copySceneHotspots}
+          onCopySelected={copySelected}
+          onResetToAppHotspots={resetToAppHotspots}
+          onClearHotspots={clearHotspots}
+          onSelectHotspot={(id) => {
+            setSelectedId(id);
+            setStatus("");
+          }}
+          onToggleHidden={toggleHidden}
+          onDeleteHotspot={deleteHotspot}
+          onUpdateSelectedHotspot={updateSelectedHotspot}
+          onUpdateSelectedAction={updateSelectedAction}
+          onMoveSelectedZIndex={moveSelectedZIndex}
+        />
       </div>
     </main>
   );

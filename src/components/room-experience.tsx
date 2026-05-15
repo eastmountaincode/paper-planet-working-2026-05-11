@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Hotspot, Scene } from "@/lib/scenes";
+import { useRouter, useSearchParams } from "next/navigation";
+import type { MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { hasEnteredPlanet, markPlanetEntered } from "@/lib/entry-state";
+import type { Hotspot, Scene, SceneTicker } from "@/lib/scenes";
 import { sceneSlugs, scenes } from "@/lib/scenes";
 
 type RoomExperienceProps = {
@@ -15,13 +23,213 @@ type PointerPosition = {
   y: number;
 };
 
+type SyncedPlaylistPosition = {
+  trackIndex: number;
+  currentTime: number;
+};
+
+const devOutlineClasses = [
+  "outline-cyan-400/80",
+  "outline-fuchsia-400/80",
+  "outline-lime-400/80",
+  "outline-amber-400/80",
+  "outline-sky-400/80",
+  "outline-rose-400/80",
+];
+
+function classNames(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function devOutline(enabled: boolean, level: number) {
+  if (!enabled) {
+    return "";
+  }
+
+  return classNames(
+    "outline outline-1 outline-offset-[-1px]",
+    devOutlineClasses[level % devOutlineClasses.length],
+  );
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
+function getHotspotZIndex(hotspot: Hotspot) {
+  return hotspot.zIndex ?? 0;
+}
+
+function sortHotspotsByZOrder(hotspots: Hotspot[]) {
+  return [...hotspots].sort(
+    (a, b) => getHotspotZIndex(a) - getHotspotZIndex(b),
+  );
+}
+
+function isExpectedMediaInterruption(error: unknown) {
+  if (!(error instanceof DOMException)) {
+    return false;
+  }
+
+  return error.name === "AbortError";
+}
+
+function getMediaErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+type SyncedTickerProps = {
+  ticker: SceneTicker;
+  devBorders: boolean;
+};
+
+const TICKER_GAP_PIXELS = 96;
+
+function TickerText({ text }: { text: string }) {
+  const characters = Array.from(text);
+
+  return (
+    <>
+      {characters.map((character, index) => (
+        <span
+          // Every ticker copy must have identical wave phase for a seamless wrap.
+          key={`${character}-${index}`}
+          className="paper-planet-wave-letter inline-block"
+          style={{ animationDelay: `${index * -0.045}s` }}
+        >
+          {character === " " ? "\u00A0" : character}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const firstCopyRef = useRef<HTMLSpanElement>(null);
+  const secondCopyRef = useRef<HTMLSpanElement>(null);
+  const [copyCount, setCopyCount] = useState(4);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const track = trackRef.current;
+    const firstCopy = firstCopyRef.current;
+    const secondCopy = secondCopyRef.current;
+
+    if (!viewport || !track || !firstCopy || !secondCopy) {
+      return;
+    }
+
+    let animationFrame = 0;
+    let itemWidth = secondCopy.offsetLeft - firstCopy.offsetLeft;
+
+    const measure = () => {
+      itemWidth = secondCopy.offsetLeft - firstCopy.offsetLeft;
+      const nextCopyCount = Math.max(
+        3,
+        Math.ceil(viewport.clientWidth / Math.max(itemWidth, 1)) + 3,
+      );
+
+      setCopyCount((current) =>
+        current === nextCopyCount ? current : nextCopyCount,
+      );
+    };
+
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(viewport);
+    resizeObserver.observe(firstCopy);
+    resizeObserver.observe(secondCopy);
+    measure();
+
+    const tick = () => {
+      const seconds = Date.now() / 1000 + (ticker.epochOffsetSeconds ?? 0);
+      const offset =
+        (seconds * ticker.speedPixelsPerSecond) % Math.max(itemWidth, 1);
+
+      track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+      animationFrame = window.requestAnimationFrame(tick);
+    };
+
+    tick();
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+    };
+  }, [ticker.epochOffsetSeconds, ticker.speedPixelsPerSecond]);
+
+  return (
+    <div
+      ref={viewportRef}
+      className={classNames(
+        "pointer-events-none absolute inset-x-0 bottom-4 z-20 overflow-hidden py-3 text-white",
+        devOutline(devBorders, 5),
+      )}
+      aria-label={ticker.text}
+    >
+      <div
+        ref={trackRef}
+        className="flex w-max whitespace-nowrap will-change-transform"
+      >
+        {Array.from({ length: copyCount }).map((_, index) => (
+          <span
+            key={index}
+            ref={
+              index === 0
+                ? firstCopyRef
+                : index === 1
+                  ? secondCopyRef
+                  : undefined
+            }
+            className="font-paper-planet block shrink-0 text-3xl leading-none text-white [text-shadow:0_2px_8px_rgba(0,0,0,0.95)] sm:text-5xl"
+            style={{ marginRight: TICKER_GAP_PIXELS }}
+            aria-hidden={index > 0}
+          >
+            <TickerText text={ticker.text} />
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function RoomExperience({ scene }: RoomExperienceProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playlistAudioRef = useRef<HTMLAudioElement>(null);
   const debugHotspots =
     searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
   const [pointerPosition, setPointerPosition] =
     useState<PointerPosition | null>(null);
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const [devBorders, setDevBorders] = useState(
+    searchParams.get("dev") === "1",
+  );
+  const [entryStateChecked, setEntryStateChecked] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false);
+  const [videoAudioMuted, setVideoAudioMuted] = useState(false);
+  const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [playlistTrackIndex, setPlaylistTrackIndex] = useState(0);
+  const [playlistStartTime, setPlaylistStartTime] = useState(0);
+  const [isExiting, setIsExiting] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [showTransitionLabel, setShowTransitionLabel] = useState(false);
 
   const aspectRatio = useMemo(
     () => `${scene.video.width} / ${scene.video.height}`,
@@ -29,9 +237,47 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   );
 
   const syncedPlayback = scene.video.sync?.enabled ?? false;
+  const videoAudioEnabled = scene.video.audio?.enabled ?? false;
+  const videoVolume = scene.video.audio?.volume ?? 0.8;
+  const playlistEnabled = scene.playlist?.enabled ?? false;
+  const playlistTracks = useMemo(
+    () => scene.playlist?.tracks ?? [],
+    [scene.playlist?.tracks],
+  );
+  const playlistSyncEnabled = scene.playlist?.sync?.enabled ?? false;
+  const playlistEpochOffset = scene.playlist?.sync?.epochOffsetSeconds ?? 0;
+  const activePlaylistTrack = playlistTracks[playlistTrackIndex] ?? null;
+  const videoAudioActive =
+    hasEntered && videoAudioEnabled && !videoAudioMuted;
+  const playlistAudioActive =
+    hasEntered && playlistEnabled && !playlistAudioMuted;
+  const orderedHotspots = useMemo(
+    () => sortHotspotsByZOrder(scene.hotspots),
+    [scene.hotspots],
+  );
+  const transitionActive = isExiting || !videoReady;
 
-  const getSyncedTime = useMemo(
-    () => () => {
+  useEffect(() => {
+    if (!transitionActive) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowTransitionLabel(true);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [transitionActive]);
+
+  function markVideoReady() {
+    setVideoReady(true);
+    setShowTransitionLabel(false);
+  }
+
+  const getSyncedTime = useCallback(
+    () => {
       const offset = scene.video.sync?.epochOffsetSeconds ?? 0;
       const duration = scene.video.durationSeconds;
 
@@ -40,31 +286,145 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     [scene.video.durationSeconds, scene.video.sync?.epochOffsetSeconds],
   );
 
+  const getSyncedPlaylistPosition = useCallback(
+    (): SyncedPlaylistPosition | null => {
+      if (!playlistSyncEnabled || playlistTracks.length === 0) {
+        return null;
+      }
+
+      const totalDuration = playlistTracks.reduce(
+        (total, track) => total + track.durationSeconds,
+        0,
+      );
+
+      if (totalDuration <= 0) {
+        return null;
+      }
+
+      let playlistTime =
+        (((Date.now() / 1000 + playlistEpochOffset) % totalDuration) +
+          totalDuration) %
+        totalDuration;
+
+      for (let index = 0; index < playlistTracks.length; index += 1) {
+        const track = playlistTracks[index];
+
+        if (playlistTime < track.durationSeconds) {
+          return {
+            trackIndex: index,
+            currentTime: playlistTime,
+          };
+        }
+
+        playlistTime -= track.durationSeconds;
+      }
+
+      return {
+        trackIndex: 0,
+        currentTime: 0,
+      };
+    },
+    [playlistEpochOffset, playlistSyncEnabled, playlistTracks],
+  );
+
+  const syncVideoTime = useCallback(() => {
+    const video = videoRef.current;
+
+    if (!video || !syncedPlayback) {
+      return;
+    }
+
+    const expectedTime = getSyncedTime();
+
+    if (
+      Number.isFinite(expectedTime) &&
+      Math.abs(video.currentTime - expectedTime) > 1.5
+    ) {
+      video.currentTime = expectedTime;
+    }
+  }, [getSyncedTime, syncedPlayback]);
+
+  const resumeRoomMedia = useCallback(() => {
+    const video = videoRef.current;
+
+    if (video) {
+      video.volume = videoVolume;
+      video.muted = !videoAudioActive;
+      syncVideoTime();
+
+      void video.play().catch((error: unknown) => {
+        if (isExpectedMediaInterruption(error)) {
+          return;
+        }
+
+        if (videoAudioActive) {
+          setAudioError(getMediaErrorMessage(error, "Video playback blocked"));
+        }
+      });
+    }
+  }, [syncVideoTime, videoAudioActive, videoVolume]);
+
+  useEffect(() => {
+    const refreshEntryState = () => {
+      if (hasEnteredPlanet()) {
+        setHasEntered(true);
+      }
+
+      setEntryStateChecked(true);
+    };
+
+    const timeout = window.setTimeout(refreshEntryState, 0);
+    const handlePageShow = () => {
+      refreshEntryState();
+      window.setTimeout(resumeRoomMedia, 0);
+    };
+
+    const handlePopState = () => {
+      refreshEntryState();
+      window.setTimeout(resumeRoomMedia, 0);
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [resumeRoomMedia]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== "b" ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isTypingTarget(event.target)
+      ) {
+        return;
+      }
+
+      setDevBorders((current) => !current);
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, []);
+
   useEffect(() => {
     if (!syncedPlayback) {
       return;
     }
 
-    const video = videoRef.current;
-
-    if (!video) {
-      return;
-    }
-
-    const syncVideoTime = () => {
-      const expectedTime = getSyncedTime();
-
-      if (
-        Number.isFinite(expectedTime) &&
-        Math.abs(video.currentTime - expectedTime) > 1.5
-      ) {
-        video.currentTime = expectedTime;
-      }
-    };
-
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         syncVideoTime();
+        resumeRoomMedia();
       }
     };
 
@@ -78,17 +438,226 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       window.removeEventListener("focus", syncVideoTime);
       window.clearInterval(interval);
     };
-  }, [getSyncedTime, syncedPlayback]);
+  }, [resumeRoomMedia, syncVideoTime, syncedPlayback]);
 
-  function getHotspotHref(hotspot: Hotspot) {
-    if (hotspot.action.type === "navigate") {
-      return `/rooms/${hotspot.action.target}`;
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video) {
+      return;
     }
 
-    const subject = hotspot.action.subject
-      ? `?subject=${encodeURIComponent(hotspot.action.subject)}`
+    video.volume = videoVolume;
+    video.muted = !videoAudioActive;
+
+    void video.play().catch((error: unknown) => {
+      if (isExpectedMediaInterruption(error)) {
+        return;
+      }
+
+      if (videoAudioActive) {
+        setAudioError(getMediaErrorMessage(error, "Audio blocked"));
+      }
+    });
+  }, [videoAudioActive, videoVolume, scene.video.src]);
+
+  useEffect(() => {
+    if (!playlistEnabled || playlistTracks.length === 0) {
+      return;
+    }
+
+    const syncPlaylist = () => {
+      const position = getSyncedPlaylistPosition();
+
+      if (!position) {
+        return;
+      }
+
+      setPlaylistTrackIndex(position.trackIndex);
+      setPlaylistStartTime(position.currentTime);
+    };
+
+    syncPlaylist();
+    const interval = window.setInterval(syncPlaylist, 30_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    getSyncedPlaylistPosition,
+    playlistEnabled,
+    playlistTracks.length,
+  ]);
+
+  useEffect(() => {
+    const audio = playlistAudioRef.current;
+
+    if (!audio || !playlistAudioActive || !activePlaylistTrack) {
+      return;
+    }
+
+    audio.volume = scene.playlist?.volume ?? 0.65;
+
+    const startPlaylistAudio = () => {
+      if (Number.isFinite(playlistStartTime)) {
+        audio.currentTime = Math.min(
+          playlistStartTime,
+          Math.max(audio.duration - 0.25, 0),
+        );
+      }
+
+      void audio.play().catch((error: unknown) => {
+        if (isExpectedMediaInterruption(error)) {
+          return;
+        }
+
+        setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
+      });
+    };
+
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      startPlaylistAudio();
+    } else {
+      audio.addEventListener("loadedmetadata", startPlaylistAudio, {
+        once: true,
+      });
+    }
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", startPlaylistAudio);
+    };
+  }, [
+    activePlaylistTrack,
+    playlistAudioActive,
+    playlistStartTime,
+    scene.playlist?.volume,
+  ]);
+
+  useEffect(() => {
+    const audio = playlistAudioRef.current;
+
+    if (!audio || playlistAudioActive) {
+      return;
+    }
+
+    audio.pause();
+  }, [playlistAudioActive]);
+
+  async function enterPlanet() {
+    const video = videoRef.current;
+    const playlistAudio = playlistAudioRef.current;
+
+    setAudioError(null);
+    markPlanetEntered();
+    setHasEntered(true);
+    setVideoAudioMuted(false);
+    setPlaylistAudioMuted(false);
+
+    try {
+      if (video && videoAudioEnabled) {
+        video.volume = videoVolume;
+        video.muted = false;
+
+        if (syncedPlayback) {
+          video.currentTime = getSyncedTime();
+        }
+
+        await video.play();
+      }
+
+      if (playlistAudio && activePlaylistTrack) {
+        playlistAudio.volume = scene.playlist?.volume ?? 0.65;
+        await playlistAudio.play();
+      }
+    } catch (error) {
+      if (isExpectedMediaInterruption(error)) {
+        return;
+      }
+
+      setAudioError(getMediaErrorMessage(error, "Audio blocked"));
+    }
+  }
+
+  function toggleVideoAudio() {
+    const video = videoRef.current;
+
+    if (!hasEntered) {
+      void enterPlanet();
+      return;
+    }
+
+    const nextMuted = !videoAudioMuted;
+    setVideoAudioMuted(nextMuted);
+
+    if (video) {
+      video.muted = nextMuted || !videoAudioEnabled;
+    }
+  }
+
+  function togglePlaylistAudio() {
+    if (!hasEntered) {
+      void enterPlanet();
+      return;
+    }
+
+    setPlaylistAudioMuted((current) => !current);
+  }
+
+  const startRoomTransition = useCallback(
+    (href: string) => {
+      if (isExiting) {
+        return;
+      }
+
+      setAudioError(null);
+      setIsExiting(true);
+      setShowTransitionLabel(false);
+
+      window.setTimeout(() => {
+        router.push(href);
+      }, 80);
+    },
+    [isExiting, router],
+  );
+
+  function handleRoomNavigation(
+    event: MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      !href.startsWith("/rooms/")
+    ) {
+      return;
+    }
+
+    if (href === `/rooms/${scene.slug}`) {
+      event.preventDefault();
+      return;
+    }
+
+    event.preventDefault();
+    startRoomTransition(href);
+  }
+
+  function getActionHref(action: Hotspot["action"]) {
+    if (action.type === "navigate") {
+      return `/rooms/${action.target}`;
+    }
+
+    const subject = action.subject
+      ? `?subject=${encodeURIComponent(action.subject)}`
       : "";
-    return `mailto:${hotspot.action.email}${subject}`;
+    return `mailto:${action.email}${subject}`;
+  }
+
+  function getHotspotHref(hotspot: Hotspot) {
+    return getActionHref(hotspot.action);
   }
 
   function getPolygonPoints(hotspot: Hotspot) {
@@ -110,109 +679,119 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   }
 
   return (
-    <main className="min-h-dvh bg-[#161410] text-[#f5efe2]">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[1540px] flex-col px-4 py-4 sm:px-6 lg:px-8">
-        <nav className="flex h-12 shrink-0 items-center justify-between gap-4">
-          <Link
-            href="/rooms/construction"
-            className="font-mono text-xs uppercase tracking-[0.24em] text-[#d9c9a3]"
-          >
-            Paper Planet
-          </Link>
-          <div className="flex items-center gap-2">
-            {sceneSlugs.map((slug) => (
-              <Link
-                key={slug}
-                href={`/rooms/${slug}`}
-                aria-current={scene.slug === slug ? "page" : undefined}
-                className="rounded-sm border border-[#f5efe2]/15 px-3 py-2 text-xs uppercase text-[#f5efe2]/70 transition hover:border-[#f5efe2]/45 hover:text-[#f5efe2] aria-[current=page]:border-[#d9c9a3] aria-[current=page]:text-[#d9c9a3]"
-              >
-                {scenes[slug].title}
-              </Link>
-            ))}
-          </div>
-        </nav>
+    <main
+      className={classNames(
+        "relative min-h-dvh overflow-hidden bg-black text-white",
+        devOutline(devBorders, 0),
+      )}
+    >
+      <section
+        className={classNames(
+          "flex min-h-dvh items-center justify-center p-3 sm:p-5",
+          devOutline(devBorders, 1),
+        )}
+      >
+        <div
+          className={classNames(
+            "relative w-full max-w-[min(100%,calc(100dvh-2.5rem))] overflow-hidden bg-black",
+            devOutline(devBorders, 2),
+          )}
+          style={{ aspectRatio }}
+          onPointerDown={handleFramePointer}
+        >
+          <video
+            key={scene.video.src}
+            ref={videoRef}
+            className={classNames(
+              "absolute inset-0 z-0 h-full w-full object-cover",
+              devOutline(devBorders, 3),
+            )}
+            src={scene.video.src}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            aria-label={`${scene.title} room video`}
+            onLoadedMetadata={(event) => {
+              event.currentTarget.volume = videoVolume;
 
-        <section className="flex flex-1 items-center justify-center py-4">
-          <div
-            className="relative w-full max-w-[min(100%,calc(100dvh-6rem))] overflow-hidden bg-black shadow-2xl shadow-black/45"
-            style={{ aspectRatio }}
-            onPointerDown={handleFramePointer}
-          >
-            <video
-              key={scene.video.src}
-              ref={videoRef}
-              className="absolute inset-0 z-0 h-full w-full object-cover"
-              src={scene.video.src}
-              autoPlay
-              muted
-              loop
-              playsInline
+              if (syncedPlayback) {
+                event.currentTarget.currentTime = getSyncedTime();
+              }
+            }}
+            onLoadedData={markVideoReady}
+            onCanPlay={markVideoReady}
+          />
+
+          {activePlaylistTrack ? (
+            <audio
+              key={activePlaylistTrack.src}
+              ref={playlistAudioRef}
+              src={activePlaylistTrack.src}
               preload="metadata"
-              aria-label={`${scene.title} room video`}
-              onLoadedMetadata={(event) => {
-                if (syncedPlayback) {
-                  event.currentTarget.currentTime = getSyncedTime();
-                }
+              onEnded={() => {
+                setPlaylistTrackIndex(
+                  (current) => (current + 1) % playlistTracks.length,
+                );
+                setPlaylistStartTime(0);
               }}
             />
+          ) : null}
 
-            {scene.hotspots
-              .filter((hotspot) => hotspot.shape === "rect")
-              .map((hotspot) => (
-                <Link
+          {scene.ticker ? (
+            <SyncedTicker ticker={scene.ticker} devBorders={devBorders} />
+          ) : null}
+
+          <svg
+            className={classNames(
+              "pointer-events-none absolute inset-0 z-10 h-full w-full",
+              devOutline(devBorders, 4),
+            )}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden={!debugHotspots}
+          >
+            {orderedHotspots.map((hotspot) => (
+                <a
                   key={hotspot.id}
                   href={getHotspotHref(hotspot)}
+                  onClick={(event) =>
+                    handleRoomNavigation(event, getHotspotHref(hotspot))
+                  }
                   aria-label={hotspot.label}
-                  title={debugHotspots ? hotspot.label : undefined}
-                  className={[
-                    "absolute z-10 cursor-pointer rounded-sm outline-none transition",
-                    "focus-visible:ring-2 focus-visible:ring-[#f5efe2] focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-                    debugHotspots
-                      ? "border border-[#f7d36a] bg-[#f7d36a]/20 hover:bg-[#f7d36a]/30"
-                      : "bg-transparent",
-                  ].join(" ")}
-                  style={{
-                    left: `${hotspot.rect.x}%`,
-                    top: `${hotspot.rect.y}%`,
-                    width: `${hotspot.rect.width}%`,
-                    height: `${hotspot.rect.height}%`,
-                  }}
+                  className="pointer-events-auto outline-none"
                 >
-                  {debugHotspots ? (
-                    <span className="absolute left-1 top-1 rounded-sm bg-black/70 px-1.5 py-1 font-mono text-[10px] uppercase text-[#f7d36a]">
-                      {hotspot.id}
-                    </span>
+                  {hotspot.shape === "rect" ? (
+                    <rect
+                      x={hotspot.rect.x}
+                      y={hotspot.rect.y}
+                      width={hotspot.rect.width}
+                      height={hotspot.rect.height}
+                      fill={
+                        debugHotspots
+                          ? "rgba(253, 224, 71, 0.22)"
+                          : "transparent"
+                      }
+                      stroke={
+                        debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
+                      }
+                      strokeWidth={debugHotspots ? 0.3 : 0}
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="all"
+                    >
+                      <title>{hotspot.label}</title>
+                    </rect>
                   ) : (
-                    <span className="sr-only">{hotspot.label}</span>
-                  )}
-                </Link>
-              ))}
-
-            <svg
-              className="pointer-events-none absolute inset-0 z-20 h-full w-full"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              aria-hidden={!debugHotspots}
-            >
-              {scene.hotspots
-                .filter((hotspot) => hotspot.shape === "polygon")
-                .map((hotspot) => (
-                  <a
-                    key={hotspot.id}
-                    href={getHotspotHref(hotspot)}
-                    aria-label={hotspot.label}
-                    className="pointer-events-auto outline-none"
-                  >
                     <polygon
                       points={getPolygonPoints(hotspot)}
                       fill={
                         debugHotspots
-                          ? "rgba(247, 211, 106, 0.22)"
+                          ? "rgba(253, 224, 71, 0.22)"
                           : "transparent"
                       }
                       stroke={
-                        debugHotspots ? "rgba(247, 211, 106, 0.95)" : "none"
+                        debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
                       }
                       strokeWidth={debugHotspots ? 0.3 : 0}
                       vectorEffect="non-scaling-stroke"
@@ -220,26 +799,240 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
                     >
                       <title>{hotspot.label}</title>
                     </polygon>
-                  </a>
-                ))}
-            </svg>
-          </div>
-        </section>
+                  )}
+                </a>
+              ))}
+          </svg>
 
-        {debugHotspots ? (
-          <aside className="grid shrink-0 gap-2 border-t border-[#f5efe2]/10 py-3 font-mono text-xs text-[#f5efe2]/70 sm:grid-cols-[1fr_auto]">
-            <p>
-              {pointerPosition
-                ? `Pointer: x ${pointerPosition.x}%, y ${pointerPosition.y}%`
-                : "Click empty video space to read percentage coordinates."}
-            </p>
-            <p>
-              Scene: {scene.slug} / Video: {scene.video.width}x
-              {scene.video.height}
-            </p>
-          </aside>
+          {scene.overlays?.map((overlay) => (
+            <Link
+              key={overlay.id}
+              href={getActionHref(overlay.action)}
+              onClick={(event) =>
+                handleRoomNavigation(event, getActionHref(overlay.action))
+              }
+              aria-label={overlay.label}
+              title={debugHotspots ? overlay.label : undefined}
+              className={classNames(
+                "absolute z-30 block outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+                devOutline(devBorders, overlay.zIndex ?? 6),
+              )}
+              style={{
+                left: `${overlay.position.x}%`,
+                top: `${overlay.position.y}%`,
+                width: `${overlay.position.width}%`,
+              }}
+            >
+              {/* Use a plain img for local hand-drawn UI sprites; Next image optimization can be brittle in dev previews. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={overlay.src}
+                alt=""
+                className="block h-auto w-full select-none"
+                draggable={false}
+              />
+              <span className="sr-only">{overlay.label}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <div
+        className={classNames(
+          "fixed inset-0 z-30 bg-black transition-opacity duration-100",
+          transitionActive
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0",
+          devOutline(devBorders, 4),
+        )}
+        aria-hidden="true"
+      />
+
+      {showTransitionLabel && transitionActive ? (
+        <div className="pointer-events-none fixed inset-0 z-[31] flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-white/70">
+          Loading
+        </div>
+      ) : null}
+
+      {!entryStateChecked ? (
+        <div
+          className={classNames(
+            "fixed inset-0 z-40 bg-black",
+            devOutline(devBorders, 4),
+          )}
+        />
+      ) : !hasEntered ? (
+        <div
+          className={classNames(
+            "fixed inset-0 z-40 flex items-center justify-center bg-black text-white",
+            devOutline(devBorders, 4),
+          )}
+        >
+          <button
+            type="button"
+            onClick={enterPlanet}
+            className={classNames(
+              "border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black",
+              devOutline(devBorders, 5),
+            )}
+          >
+            Enter Planet
+          </button>
+        </div>
+      ) : null}
+
+      <aside
+        className={classNames(
+          "fixed right-3 top-3 z-50 w-[min(15rem,calc(100vw-1.5rem))] border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",
+          devOutline(devBorders, 5),
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setDevPanelOpen((current) => !current)}
+          className={classNames(
+            "flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left uppercase tracking-[0.16em] text-white/80 hover:text-white",
+            devOutline(devBorders, 0),
+          )}
+          aria-expanded={devPanelOpen}
+        >
+          <span>{scene.title}</span>
+          <span aria-hidden="true">{devPanelOpen ? "−" : "+"}</span>
+        </button>
+
+        {devPanelOpen ? (
+          <div
+            className={classNames(
+              "grid gap-2 border-t border-white/15 p-2",
+              devOutline(devBorders, 1),
+            )}
+          >
+            <div
+              className={classNames(
+                "grid grid-cols-1 gap-1",
+                devOutline(devBorders, 2),
+              )}
+            >
+              {sceneSlugs.map((slug, index) => (
+                <Link
+                  key={slug}
+                  href={`/rooms/${slug}`}
+                  onClick={(event) =>
+                    handleRoomNavigation(event, `/rooms/${slug}`)
+                  }
+                  aria-current={scene.slug === slug ? "page" : undefined}
+                  className={classNames(
+                    "truncate border border-white/20 px-2 py-1 text-center uppercase text-white/70 hover:border-white/70 hover:text-white aria-[current=page]:border-white aria-[current=page]:text-white",
+                    devOutline(devBorders, 3 + index),
+                  )}
+                >
+                  {scenes[slug].title}
+                </Link>
+              ))}
+            </div>
+
+            <div
+              className={classNames(
+                "grid gap-1.5 border border-white/15 p-2",
+                devOutline(devBorders, 2),
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="uppercase text-white/60">Sound</span>
+                {!hasEntered ? (
+                  <button
+                    type="button"
+                    onClick={enterPlanet}
+                    className={classNames(
+                      "border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                      devOutline(devBorders, 3),
+                    )}
+                  >
+                    Enter
+                  </button>
+                ) : (
+                  <span className="uppercase text-white/50">Unlocked</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2 text-white/60">
+                <span>
+                  Video audio:{" "}
+                  {videoAudioEnabled
+                    ? videoAudioActive
+                      ? `on / volume ${videoVolume}`
+                      : "muted"
+                    : "off"}
+                </span>
+                {videoAudioEnabled ? (
+                  <button
+                    type="button"
+                    onClick={toggleVideoAudio}
+                    className={classNames(
+                      "border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                      devOutline(devBorders, 3),
+                    )}
+                  >
+                    {videoAudioActive ? "Mute" : "Unmute"}
+                  </button>
+                ) : null}
+              </div>
+              <p className="text-white/60">
+                Playlist:{" "}
+                {playlistEnabled
+                  ? playlistTracks.length > 0
+                    ? `${scene.playlist?.name} (${playlistTracks.length}) / ${
+                        playlistAudioActive ? "on" : "muted"
+                      }`
+                    : `${scene.playlist?.name} / tracks not published yet`
+                  : "off"}
+              </p>
+              {playlistEnabled && playlistTracks.length > 0 ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={togglePlaylistAudio}
+                    className={classNames(
+                      "border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                      devOutline(devBorders, 3),
+                    )}
+                  >
+                    {playlistAudioActive ? "Mute playlist" : "Unmute playlist"}
+                  </button>
+                </div>
+              ) : null}
+              {playlistEnabled && activePlaylistTrack ? (
+                <p className="text-white/80">
+                  Now playing: {playlistTrackIndex + 1}/{playlistTracks.length}{" "}
+                  {activePlaylistTrack.title}
+                </p>
+              ) : null}
+              {audioError ? <p className="text-red-300">{audioError}</p> : null}
+            </div>
+
+            <div
+              className={classNames(
+                "grid gap-0.5 border border-white/15 p-2 text-white/60",
+                devOutline(devBorders, 2),
+              )}
+            >
+              <p>Scene: {scene.slug}</p>
+              <p>
+                Video: {scene.video.width}x{scene.video.height} /{" "}
+                {scene.video.durationSeconds.toFixed(3)}s
+              </p>
+              <p>Borders: {devBorders ? "visible" : "hidden"}</p>
+              <p>
+                Hotspots:{" "}
+                {debugHotspots
+                  ? pointerPosition
+                    ? `x ${pointerPosition.x}%, y ${pointerPosition.y}%`
+                    : "visible"
+                  : "add ?hotspots=1"}
+              </p>
+            </div>
+          </div>
         ) : null}
-      </div>
+      </aside>
     </main>
   );
 }

@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const envFile = ".env.local";
+const playlistManifestFile = "src/lib/scene-playlists.json";
 
-const uploads = [
+const videoUploads = [
   {
     source:
       "../assets/Phase 1 - Construction Zone/ROOMS/compressed/construction-1080-crf24-audio.mp4",
@@ -17,6 +18,22 @@ const uploads = [
     contentType: "video/mp4",
   },
 ];
+
+function getPlaylistUploads() {
+  if (!existsSync(playlistManifestFile)) {
+    return [];
+  }
+
+  const manifest = JSON.parse(readFileSync(playlistManifestFile, "utf8"));
+
+  return Object.values(manifest).flatMap((playlist) =>
+    playlist.tracks.map((track) => ({
+      source: `../${track.sourceFile}`,
+      key: track.key,
+      contentType: "audio/mpeg",
+    })),
+  );
+}
 
 function loadEnv(file) {
   const env = { ...process.env };
@@ -89,6 +106,7 @@ function main() {
 
   const cacheControl =
     env.R2_CACHE_CONTROL || "public, max-age=31536000, immutable";
+  const uploads = [...videoUploads, ...getPlaylistUploads()];
 
   console.log("Verifying R2 bucket access...");
   runAws(
@@ -116,7 +134,7 @@ function main() {
     );
   }
 
-  const listing = runAws(
+  const roomListing = runAws(
     [
       "s3",
       "ls",
@@ -128,7 +146,24 @@ function main() {
   );
 
   console.log("Uploaded room objects:");
-  console.log(listing.trim());
+  console.log(roomListing.trim());
+
+  const audioListing = runAws(
+    [
+      "s3",
+      "ls",
+      `s3://${env.R2_BUCKET_NAME}/audio/`,
+      "--recursive",
+      "--endpoint-url",
+      env.R2_ENDPOINT,
+    ],
+    env,
+  );
+
+  if (audioListing.trim()) {
+    console.log("Uploaded audio objects:");
+    console.log(audioListing.trim());
+  }
 }
 
 main();

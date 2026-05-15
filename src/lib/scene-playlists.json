@@ -1,0 +1,321 @@
+{
+  "construction": {
+    "name": "HOME - Construction Zone",
+    "folder": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
+    "playbackMode": "ordered",
+    "totalDurationSeconds": 5061.537,
+    "tracks": [
+      {
+        "title": "The Merchant of Graff",
+        "album": "Alpaulccino",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/01 The Merchant of Graff.mp3",
+        "key": "audio/construction/alpaulccino/01-the-merchant-of-graff.mp3",
+        "src": "audio/construction/alpaulccino/01-the-merchant-of-graff.mp3",
+        "durationSeconds": 182.361
+      },
+      {
+        "title": "Two For The Money",
+        "album": "Alpaulccino",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/02 Two For The Money.mp3",
+        "key": "audio/construction/alpaulccino/02-two-for-the-money.mp3",
+        "src": "audio/construction/alpaulccino/02-two-for-the-money.mp3",
+        "durationSeconds": 201.691
+      },
+      {
+        "title": "Manglehord",
+        "album": "Alpaulccino",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/03 Manglehord.mp3",
+        "key": "audio/construction/alpaulccino/03-manglehord.mp3",
+        "src": "audio/construction/alpaulccino/03-manglehord.mp3",
+        "durationSeconds": 253.91
+      },
+      {
+        "title": "Scent of a Bloomman",
+        "album": "Alpaulccino",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/04 Scent of a Bloomman.mp3",
+        "key": "audio/construction/alpaulccino/04-scent-of-a-bloomman.mp3",
+        "src": "audio/construction/alpaulccino/04-scent-of-a-bloomman.mp3",
+        "durationSeconds": 202.083
+      },
+      {
+        "title": "Conito_s Way",
+        "album": "Alpaulccino",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/05 Conito_s Way.mp3",
+        "key": "audio/construction/alpaulccino/05-conito-s-way.mp3",
+        "src": "audio/construction/alpaulccino/05-conito-s-way.mp3",
+        "durationSeconds": 251.559
+      },
+      {
+        "title": "evelina .5uw",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/01 evelina .5uw.mp3",
+        "key": "audio/construction/leslie-12-to/01-evelina-5uw.mp3",
+        "src": "audio/construction/leslie-12-to/01-evelina-5uw.mp3",
+        "durationSeconds": 177.215
+      },
+      {
+        "title": "kingsly o.b",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/02 kingsly o.b.mp3",
+        "key": "audio/construction/leslie-12-to/02-kingsly-o-b.mp3",
+        "src": "audio/construction/leslie-12-to/02-kingsly-o-b.mp3",
+        "durationSeconds": 205.244
+      },
+      {
+        "title": "ormside .w11",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/03 ormside .w11.mp3",
+        "key": "audio/construction/leslie-12-to/03-ormside-w11.mp3",
+        "src": "audio/construction/leslie-12-to/03-ormside-w11.mp3",
+        "durationSeconds": 129.567
+      },
+      {
+        "title": "terry perry",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/04 terry perry.mp3",
+        "key": "audio/construction/leslie-12-to/04-terry-perry.mp3",
+        "src": "audio/construction/leslie-12-to/04-terry-perry.mp3",
+        "durationSeconds": 140.356
+      },
+      {
+        "title": "green coats",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/05 green coats.mp3",
+        "key": "audio/construction/leslie-12-to/05-green-coats.mp3",
+        "src": "audio/construction/leslie-12-to/05-green-coats.mp3",
+        "durationSeconds": 81.972
+      },
+      {
+        "title": "brick lane l1i",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/06 brick lane l1i.mp3",
+        "key": "audio/construction/leslie-12-to/06-brick-lane-l1i.mp3",
+        "src": "audio/construction/leslie-12-to/06-brick-lane-l1i.mp3",
+        "durationSeconds": 121.704
+      },
+      {
+        "title": "harlow .sds",
+        "album": "leslie 12.to",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/07 harlow .sds.mp3",
+        "key": "audio/construction/leslie-12-to/07-harlow-sds.mp3",
+        "src": "audio/construction/leslie-12-to/07-harlow-sds.mp3",
+        "durationSeconds": 159.216
+      },
+      {
+        "title": "Surface Light",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/01 Surface Light.mp3",
+        "key": "audio/construction/sun-through-stone/01-surface-light.mp3",
+        "src": "audio/construction/sun-through-stone/01-surface-light.mp3",
+        "durationSeconds": 239.386
+      },
+      {
+        "title": "Pomegranate",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/02 Pomegranate.mp3",
+        "key": "audio/construction/sun-through-stone/02-pomegranate.mp3",
+        "src": "audio/construction/sun-through-stone/02-pomegranate.mp3",
+        "durationSeconds": 236.774
+      },
+      {
+        "title": "Ash Taste",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/03 Ash Taste.mp3",
+        "key": "audio/construction/sun-through-stone/03-ash-taste.mp3",
+        "src": "audio/construction/sun-through-stone/03-ash-taste.mp3",
+        "durationSeconds": 121.548
+      },
+      {
+        "title": "Rocking Foot Floor Creek",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/04 Rocking Foot Floor Creek.mp3",
+        "key": "audio/construction/sun-through-stone/04-rocking-foot-floor-creek.mp3",
+        "src": "audio/construction/sun-through-stone/04-rocking-foot-floor-creek.mp3",
+        "durationSeconds": 126.38
+      },
+      {
+        "title": "Dawn Still",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/05 Dawn Still.mp3",
+        "key": "audio/construction/sun-through-stone/05-dawn-still.mp3",
+        "src": "audio/construction/sun-through-stone/05-dawn-still.mp3",
+        "durationSeconds": 148.846
+      },
+      {
+        "title": "Wind Through Window",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/06 Wind Through Window.mp3",
+        "key": "audio/construction/sun-through-stone/06-wind-through-window.mp3",
+        "src": "audio/construction/sun-through-stone/06-wind-through-window.mp3",
+        "durationSeconds": 131.683
+      },
+      {
+        "title": "Scattered Blue",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/07 Scattered Blue.mp3",
+        "key": "audio/construction/sun-through-stone/07-scattered-blue.mp3",
+        "src": "audio/construction/sun-through-stone/07-scattered-blue.mp3",
+        "durationSeconds": 136.255
+      },
+      {
+        "title": "Sock",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/08 Sock.mp3",
+        "key": "audio/construction/sun-through-stone/08-sock.mp3",
+        "src": "audio/construction/sun-through-stone/08-sock.mp3",
+        "durationSeconds": 160.705
+      },
+      {
+        "title": "Sun Through Stone",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/09 Sun Through Stone.mp3",
+        "key": "audio/construction/sun-through-stone/09-sun-through-stone.mp3",
+        "src": "audio/construction/sun-through-stone/09-sun-through-stone.mp3",
+        "durationSeconds": 224.784
+      },
+      {
+        "title": "Note With Crow",
+        "album": "Sun Through Stone",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/10 Note With Crow.mp3",
+        "key": "audio/construction/sun-through-stone/10-note-with-crow.mp3",
+        "src": "audio/construction/sun-through-stone/10-note-with-crow.mp3",
+        "durationSeconds": 318.328
+      },
+      {
+        "title": "silly questions",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/01 silly questions.mp3",
+        "key": "audio/construction/that-was-yesterday/01-silly-questions.mp3",
+        "src": "audio/construction/that-was-yesterday/01-silly-questions.mp3",
+        "durationSeconds": 187.533
+      },
+      {
+        "title": "if it bends",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/02 if it bends.mp3",
+        "key": "audio/construction/that-was-yesterday/02-if-it-bends.mp3",
+        "src": "audio/construction/that-was-yesterday/02-if-it-bends.mp3",
+        "durationSeconds": 157.806
+      },
+      {
+        "title": "shadows in the summer",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/03 shadows in the summer.mp3",
+        "key": "audio/construction/that-was-yesterday/03-shadows-in-the-summer.mp3",
+        "src": "audio/construction/that-was-yesterday/03-shadows-in-the-summer.mp3",
+        "durationSeconds": 108.513
+      },
+      {
+        "title": "last to leave",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/04 last to leave.mp3",
+        "key": "audio/construction/that-was-yesterday/04-last-to-leave.mp3",
+        "src": "audio/construction/that-was-yesterday/04-last-to-leave.mp3",
+        "durationSeconds": 147.984
+      },
+      {
+        "title": "family business",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/05 family business.mp3",
+        "key": "audio/construction/that-was-yesterday/05-family-business.mp3",
+        "src": "audio/construction/that-was-yesterday/05-family-business.mp3",
+        "durationSeconds": 136.934
+      },
+      {
+        "title": "mental wings",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/06 mental wings.mp3",
+        "key": "audio/construction/that-was-yesterday/06-mental-wings.mp3",
+        "src": "audio/construction/that-was-yesterday/06-mental-wings.mp3",
+        "durationSeconds": 113.136
+      },
+      {
+        "title": "chances are you will",
+        "album": "that was yesterday",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/07 chances are you will.mp3",
+        "key": "audio/construction/that-was-yesterday/07-chances-are-you-will.mp3",
+        "src": "audio/construction/that-was-yesterday/07-chances-are-you-will.mp3",
+        "durationSeconds": 258.064
+      }
+    ]
+  },
+  "hq": {
+    "name": "HQ",
+    "folder": "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
+    "playbackMode": "deterministic-random",
+    "shuffleSeed": "paper-planet-hq-v1",
+    "totalDurationSeconds": 791.041,
+    "tracks": [
+      {
+        "title": "SFX 5",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX 5.mp3",
+        "key": "audio/hq/sfx-5.mp3",
+        "src": "audio/hq/sfx-5.mp3",
+        "durationSeconds": 39.654
+      },
+      {
+        "title": "SFX2",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX2.mp3",
+        "key": "audio/hq/sfx2.mp3",
+        "src": "audio/hq/sfx2.mp3",
+        "durationSeconds": 25.104
+      },
+      {
+        "title": "SFX3",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX3.mp3",
+        "key": "audio/hq/sfx3.mp3",
+        "src": "audio/hq/sfx3.mp3",
+        "durationSeconds": 90.41
+      },
+      {
+        "title": "SFX1",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX1.mp3",
+        "key": "audio/hq/sfx1.mp3",
+        "src": "audio/hq/sfx1.mp3",
+        "durationSeconds": 44.408
+      },
+      {
+        "title": "TEETHTOWN",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/TEETHTOWN.mp3",
+        "key": "audio/hq/teethtown.mp3",
+        "src": "audio/hq/teethtown.mp3",
+        "durationSeconds": 27.376
+      },
+      {
+        "title": "CIRCUSWOLF",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/CIRCUSWOLF.mp3",
+        "key": "audio/hq/circuswolf.mp3",
+        "src": "audio/hq/circuswolf.mp3",
+        "durationSeconds": 33.855
+      },
+      {
+        "title": "SFX 4",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX 4.mp3",
+        "key": "audio/hq/sfx-4.mp3",
+        "src": "audio/hq/sfx-4.mp3",
+        "durationSeconds": 72.359
+      },
+      {
+        "title": "HIT 1",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/HIT 1.mp3",
+        "key": "audio/hq/hit-1.mp3",
+        "src": "audio/hq/hit-1.mp3",
+        "durationSeconds": 221.989
+      },
+      {
+        "title": "SPEAKERPHONE THUG",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SPEAKERPHONE THUG.mp3",
+        "key": "audio/hq/speakerphone-thug.mp3",
+        "src": "audio/hq/speakerphone-thug.mp3",
+        "durationSeconds": 196.232
+      },
+      {
+        "title": "NEENON",
+        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/NEENON.mp3",
+        "key": "audio/hq/neenon.mp3",
+        "src": "audio/hq/neenon.mp3",
+        "durationSeconds": 39.654
+      }
+    ]
+  }
+}

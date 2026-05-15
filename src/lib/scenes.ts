@@ -1,3 +1,6 @@
+import sceneHotspotsData from "./scene-hotspots.json";
+import scenePlaylistsData from "./scene-playlists.json";
+
 export type SceneSlug = "construction" | "hq";
 
 export type PercentPoint = {
@@ -18,6 +21,7 @@ export type HotspotAction =
 type HotspotBase = {
   id: string;
   label: string;
+  zIndex?: number;
   action: HotspotAction;
 };
 
@@ -38,6 +42,26 @@ export type PolygonHotspot = HotspotBase & {
 
 export type Hotspot = RectHotspot | PolygonHotspot;
 
+export type SceneIconOverlay = {
+  id: string;
+  label: string;
+  src: string;
+  zIndex?: number;
+  position: {
+    x: number;
+    y: number;
+    width: number;
+  };
+  action: HotspotAction;
+};
+
+export type SceneTicker = {
+  text: string;
+  position: "bottom";
+  speedPixelsPerSecond: number;
+  epochOffsetSeconds?: number;
+};
+
 export type Scene = {
   slug: SceneSlug;
   title: string;
@@ -51,18 +75,64 @@ export type Scene = {
       enabled: boolean;
       epochOffsetSeconds?: number;
     };
+    audio?: {
+      enabled: boolean;
+      volume: number;
+    };
   };
   playlist?: {
+    enabled: boolean;
     name: string;
     folder: string;
+    volume: number;
+    sync?: {
+      enabled: boolean;
+      epochOffsetSeconds?: number;
+    };
+    tracks: {
+      title: string;
+      src: string;
+      durationSeconds: number;
+    }[];
   };
   hotspots: Hotspot[];
+  overlays?: SceneIconOverlay[];
+  ticker?: SceneTicker;
+};
+
+type ScenePlaylistTrackData = {
+  title: string;
+  album?: string;
+  sourceFile: string;
+  key: string;
+  src: string;
+  durationSeconds: number;
+};
+
+type ScenePlaylistData = {
+  name: string;
+  folder: string;
+  playbackMode?: "ordered" | "deterministic-random";
+  shuffleSeed?: string;
+  totalDurationSeconds: number;
+  tracks: ScenePlaylistTrackData[];
 };
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
 
 const mediaUrl = (path: string) =>
   `${mediaBaseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+
+const sceneHotspots = sceneHotspotsData as Record<SceneSlug, Hotspot[]>;
+const scenePlaylists = scenePlaylistsData as Record<SceneSlug, ScenePlaylistData>;
+
+function getPlaylistTracks(slug: SceneSlug) {
+  return scenePlaylists[slug].tracks.map((track) => ({
+    title: track.album ? `${track.album} - ${track.title}` : track.title,
+    src: mediaUrl(track.src),
+    durationSeconds: track.durationSeconds,
+  }));
+}
 
 export const scenes: Record<SceneSlug, Scene> = {
   construction: {
@@ -78,29 +148,29 @@ export const scenes: Record<SceneSlug, Scene> = {
       sync: {
         enabled: true,
       },
+      audio: {
+        enabled: true,
+        volume: 0.8,
+      },
     },
     playlist: {
+      enabled: true,
       name: "HOME - Construction Zone",
       folder:
         "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
-    },
-    hotspots: [
-      {
-        id: "hq-building",
-        label: "HQ building",
-        shape: "rect",
-        rect: {
-          x: 57,
-          y: 18,
-          width: 27,
-          height: 35,
-        },
-        action: {
-          type: "navigate",
-          target: "hq",
-        },
+      volume: 0.65,
+      sync: {
+        enabled: true,
       },
-    ],
+      tracks: getPlaylistTracks("construction"),
+    },
+    hotspots: sceneHotspots.construction,
+    overlays: [],
+    ticker: {
+      text: "Paper Planet Under Construction Coming Fall 2026",
+      position: "bottom",
+      speedPixelsPerSecond: 44,
+    },
   },
   hq: {
     slug: "hq",
@@ -115,26 +185,36 @@ export const scenes: Record<SceneSlug, Scene> = {
       sync: {
         enabled: true,
       },
+      audio: {
+        enabled: true,
+        volume: 0.8,
+      },
     },
     playlist: {
+      enabled: true,
       name: "HQ",
       folder: "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
+      volume: 0.65,
+      sync: {
+        enabled: true,
+      },
+      tracks: getPlaylistTracks("hq"),
     },
-    hotspots: [
+    hotspots: sceneHotspots.hq,
+    overlays: [
       {
-        id: "chair-contact",
-        label: "Contact Paper Planet",
-        shape: "rect",
-        rect: {
-          x: 40,
-          y: 61,
-          width: 18,
-          height: 24,
+        id: "hq-back-button",
+        label: "Back to Construction Zone",
+        src: "/icons/back_button_2.png",
+        zIndex: 100,
+        position: {
+          x: 3,
+          y: 3,
+          width: 12,
         },
         action: {
-          type: "mailto",
-          email: "paperplanetrecords@gmail.com",
-          subject: "Paper Planet Records",
+          type: "navigate",
+          target: "construction",
         },
       },
     ],

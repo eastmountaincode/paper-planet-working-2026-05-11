@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { EnterPlanet } from "@/components/enter-planet";
 
 export default function Home() {
-  redirect("/rooms/construction");
+  return <EnterPlanet />;
 }
