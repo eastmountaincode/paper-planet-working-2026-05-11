@@ -716,7 +716,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     setPlaylistAudioMuted((current) => !current);
   }
 
-  function primePlaylistForScene(targetScene: Scene) {
+  async function playPlaylistForScene(targetScene: Scene) {
     if (!hasEntered || playlistAudioMuted) {
       return;
     }
@@ -740,38 +740,15 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       return;
     }
 
-    void playPlaylistTrack({
+    await playPlaylistTrack({
       src: targetTrack.src,
       startTime: position?.currentTime ?? 0,
       volume: targetPlaylist.volume,
       onEnded: () => undefined,
-    }).catch((error: unknown) => {
-      if (isExpectedMediaInterruption(error)) {
-        return;
-      }
-
-      setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
     });
   }
 
-  const startRoomTransition = useCallback(
-    (href: string) => {
-      if (isExiting) {
-        return;
-      }
-
-      setAudioError(null);
-      setIsExiting(true);
-      setShowTransitionLabel(false);
-
-      window.setTimeout(() => {
-        router.push(href);
-      }, 45);
-    },
-    [isExiting, router],
-  );
-
-  function handleRoomNavigation(
+  async function handleRoomNavigation(
     event: MouseEvent<HTMLAnchorElement>,
     href: string,
   ) {
@@ -797,11 +774,23 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     const targetSlug = href.replace(/^\/rooms\//, "") as Scene["slug"];
     const targetScene = scenes[targetSlug];
 
+    setAudioError(null);
+    setIsExiting(true);
+    setShowTransitionLabel(false);
+
     if (targetScene) {
-      primePlaylistForScene(targetScene);
+      try {
+        await playPlaylistForScene(targetScene);
+      } catch (error: unknown) {
+        if (!isExpectedMediaInterruption(error)) {
+          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
+        }
+      }
     }
 
-    startRoomTransition(href);
+    window.setTimeout(() => {
+      router.push(href);
+    }, 45);
   }
 
   function getActionHref(action: Hotspot["action"]) {
