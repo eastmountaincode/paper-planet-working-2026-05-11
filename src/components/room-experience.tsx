@@ -256,7 +256,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const navigationIdRef = useRef(0);
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
-  const [showTransitionLabel, setShowTransitionLabel] = useState(false);
+  const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
 
   const aspectRatio = useMemo(
     () => `${scene.video.width} / ${scene.video.height}`,
@@ -276,37 +276,26 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const playlistVolume = scene.playlist?.volume ?? 0.65;
   const activePlaylistTrack = playlistTracks[playlistTrackIndex] ?? null;
   const videoAudioActive =
-    hasEntered && videoAudioEnabled && !videoAudioMuted;
+    hasEntered && videoAudioEnabled && !videoAudioMuted && !audioTransitionMuted;
   const playlistAudioActive =
-    hasEntered && playlistEnabled && !playlistAudioMuted;
+    hasEntered &&
+    playlistEnabled &&
+    !playlistAudioMuted &&
+    !audioTransitionMuted;
   const orderedHotspots = useMemo(
     () => sortHotspotsByZOrder(scene.hotspots),
     [scene.hotspots],
   );
   const transitionActive = isExiting || !videoReady;
 
-  useEffect(() => {
-    if (!transitionActive) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setShowTransitionLabel(true);
-    }, 500);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [transitionActive]);
-
   function markVideoReady() {
     if (fadeOutInProgressRef.current) {
       return;
     }
 
+    setAudioTransitionMuted(false);
     setVideoReady(true);
     setIsExiting(false);
-    setShowTransitionLabel(false);
   }
 
   const getSyncedTime = useCallback(
@@ -781,8 +770,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       fadeOutInProgressRef.current = true;
 
       setAudioError(null);
+      setAudioTransitionMuted(true);
+      setVideoAudioLevel(videoVolume, true);
+      setRoomPlaylistAudioLevel(scene.slug, playlistVolume, true);
       setIsExiting(true);
-      setShowTransitionLabel(false);
 
       const playlistPromise =
         hasEntered && !playlistAudioMuted
@@ -806,7 +797,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       switchScene(targetScene, href, mode);
       void playlistPromise;
     },
-    [hasEntered, playPlaylistForScene, playlistAudioMuted, switchScene],
+    [
+      hasEntered,
+      playPlaylistForScene,
+      playlistAudioMuted,
+      playlistVolume,
+      scene.slug,
+      setRoomPlaylistAudioLevel,
+      setVideoAudioLevel,
+      switchScene,
+      videoVolume,
+    ],
   );
 
   async function handleRoomNavigation(
@@ -1063,12 +1064,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         )}
         aria-hidden="true"
       />
-
-      {showTransitionLabel && transitionActive ? (
-        <div className="pointer-events-none fixed inset-0 z-[41] flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-white/70">
-          Loading
-        </div>
-      ) : null}
 
       {!hasEntered ? (
         <div
