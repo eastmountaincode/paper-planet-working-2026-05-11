@@ -23,10 +23,13 @@ type EntryContextValue = {
   detachVideoAudio: (video: HTMLVideoElement) => void;
   hasEntered: boolean;
   markEntered: () => void;
-  pausePlaylistAudio: () => void;
   playPlaylistTrack: (options: PlayPlaylistTrackOptions) => Promise<void>;
+  playlistGain: number;
   playlistStatus: PlaylistStatus;
+  resumePlaylistAudio: (volume: number, muted: boolean) => Promise<void>;
+  setPlaylistAudioLevel: (volume: number, muted: boolean) => void;
   setVideoAudioLevel: (volume: number, muted: boolean) => void;
+  videoGain: number;
 };
 
 type PlaylistStatus = {
@@ -62,6 +65,8 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     paused: true,
     readyState: 0,
   });
+  const [playlistGain, setPlaylistGain] = useState(0);
+  const [videoGain, setVideoGain] = useState(0);
 
   const markEntered = useCallback(() => {
     setHasEntered(true);
@@ -112,17 +117,30 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     };
   }, [ensureAudioContext]);
 
-  const pausePlaylistAudio = useCallback(() => {
-    playlistAudioRef.current?.pause();
-  }, []);
-
   const setVideoAudioLevel = useCallback((volume: number, muted: boolean) => {
+    const nextGain = muted ? 0 : volume;
+    setVideoGain(nextGain);
+
     if (!videoGainRef.current) {
       return;
     }
 
-    videoGainRef.current.gain.value = muted ? 0 : volume;
+    videoGainRef.current.gain.value = nextGain;
   }, []);
+
+  const setPlaylistAudioLevel = useCallback(
+    (volume: number, muted: boolean) => {
+      const nextGain = muted ? 0 : volume;
+      setPlaylistGain(nextGain);
+
+      if (!playlistGainRef.current) {
+        return;
+      }
+
+      playlistGainRef.current.gain.value = nextGain;
+    },
+    [],
+  );
 
   const attachVideoAudio = useCallback(
     async (video: HTMLVideoElement, volume: number) => {
@@ -155,8 +173,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    source.disconnect();
-    videoSourcesRef.current.delete(video);
+    video.muted = true;
   }, []);
 
   const playPlaylistTrack = useCallback(
@@ -167,12 +184,13 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { audio, gain } = mixer;
+      const { audio } = mixer;
       const requestId = playlistRequestIdRef.current + 1;
       playlistRequestIdRef.current = requestId;
       playlistEndedHandlerRef.current = onEnded ?? null;
+      audio.muted = false;
       audio.volume = 1;
-      gain.gain.value = volume;
+      setPlaylistAudioLevel(volume, false);
 
       const absoluteSrc = new URL(src, window.location.href).href;
       const sourceChanged =
@@ -214,7 +232,27 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         await audio.play();
       }
     },
-    [ensurePlaylistMixer],
+    [ensurePlaylistMixer, setPlaylistAudioLevel],
+  );
+
+  const resumePlaylistAudio = useCallback(
+    async (volume: number, muted: boolean) => {
+      const mixer = await ensurePlaylistMixer();
+
+      if (!mixer) {
+        return;
+      }
+
+      const { audio } = mixer;
+      audio.muted = false;
+      audio.volume = 1;
+      setPlaylistAudioLevel(volume, muted);
+
+      if (!muted && audio.currentSrc && audio.paused) {
+        await audio.play();
+      }
+    },
+    [ensurePlaylistMixer, setPlaylistAudioLevel],
   );
 
   useEffect(() => {
@@ -272,23 +310,29 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       hasEntered,
+      markEntered,
       attachVideoAudio,
       detachVideoAudio,
-      markEntered,
-      pausePlaylistAudio,
       playPlaylistTrack,
+      playlistGain,
       playlistStatus,
+      resumePlaylistAudio,
+      setPlaylistAudioLevel,
       setVideoAudioLevel,
+      videoGain,
     }),
     [
       attachVideoAudio,
       detachVideoAudio,
       hasEntered,
       markEntered,
-      pausePlaylistAudio,
       playPlaylistTrack,
+      playlistGain,
       playlistStatus,
+      resumePlaylistAudio,
+      setPlaylistAudioLevel,
       setVideoAudioLevel,
+      videoGain,
     ],
   );
 

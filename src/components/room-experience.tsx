@@ -262,10 +262,13 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     detachVideoAudio,
     hasEntered,
     markEntered,
-    pausePlaylistAudio,
+    playlistGain,
     playlistStatus,
     playPlaylistTrack,
+    resumePlaylistAudio,
+    setPlaylistAudioLevel,
     setVideoAudioLevel,
+    videoGain,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const debugHotspots =
@@ -300,6 +303,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   );
   const playlistSyncEnabled = scene.playlist?.sync?.enabled ?? false;
   const playlistEpochOffset = scene.playlist?.sync?.epochOffsetSeconds ?? 0;
+  const playlistVolume = scene.playlist?.volume ?? 0.65;
   const activePlaylistTrack = playlistTracks[playlistTrackIndex] ?? null;
   const videoAudioActive =
     hasEntered && videoAudioEnabled && !videoAudioMuted;
@@ -396,6 +400,25 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     syncVideoTime,
     videoAudioActive,
     videoVolume,
+  ]);
+
+  const resumeActivePlaylistAudio = useCallback(() => {
+    if (!playlistAudioActive || !activePlaylistTrack) {
+      return;
+    }
+
+    void resumePlaylistAudio(playlistVolume, false).catch((error: unknown) => {
+      if (isExpectedMediaInterruption(error)) {
+        return;
+      }
+
+      setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
+    });
+  }, [
+    activePlaylistTrack,
+    playlistAudioActive,
+    playlistVolume,
+    resumePlaylistAudio,
   ]);
 
   useEffect(() => {
@@ -541,7 +564,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       playPlaylistTrack({
       src: activePlaylistTrack.src,
       startTime: playlistStartTime,
-      volume: scene.playlist?.volume ?? 0.65,
+      volume: playlistVolume,
       onEnded: () => {
         setPlaylistTrackIndex(
           (current) => (current + 1) % playlistTracks.length,
@@ -579,16 +602,24 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     playlistAudioActive,
     playlistStartTime,
     playlistTracks.length,
-    scene.playlist?.volume,
+    playlistVolume,
   ]);
 
   useEffect(() => {
-    if (playlistAudioActive) {
+    setPlaylistAudioLevel(playlistVolume, !playlistAudioActive);
+  }, [playlistAudioActive, playlistVolume, setPlaylistAudioLevel]);
+
+  useEffect(() => {
+    if (!playlistAudioActive || !activePlaylistTrack) {
       return;
     }
 
-    pausePlaylistAudio();
-  }, [pausePlaylistAudio, playlistAudioActive]);
+    const interval = window.setInterval(resumeActivePlaylistAudio, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [activePlaylistTrack, playlistAudioActive, resumeActivePlaylistAudio]);
 
   async function enterPlanet() {
     const video = videoRef.current;
@@ -604,7 +635,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         playPlaylistTrack({
           src: activePlaylistTrack.src,
           startTime: playlistStartTime,
-          volume: scene.playlist?.volume ?? 0.65,
+          volume: playlistVolume,
           onEnded: () => {
             setPlaylistTrackIndex(
               (current) => (current + 1) % playlistTracks.length,
@@ -653,6 +684,8 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     if (video) {
       setVideoAudioLevel(videoVolume, nextMuted || !videoAudioEnabled);
     }
+
+    resumeActivePlaylistAudio();
   }
 
   function togglePlaylistAudio() {
@@ -672,7 +705,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     const targetPlaylist = targetScene.playlist;
 
     if (!targetPlaylist?.enabled || targetPlaylist.tracks.length === 0) {
-      pausePlaylistAudio();
+      setPlaylistAudioLevel(0, true);
       return;
     }
 
@@ -1096,6 +1129,10 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
                 Playlist state: {playlistStatus.lastEvent} /{" "}
                 {playlistStatus.paused ? "paused" : "playing"} / ready{" "}
                 {playlistStatus.readyState} / net {playlistStatus.networkState}
+              </p>
+              <p className="text-white/55">
+                Mixer gain: video {videoGain.toFixed(2)} / playlist{" "}
+                {playlistGain.toFixed(2)}
               </p>
               <p className="truncate text-white/45">
                 Playlist source:{" "}
