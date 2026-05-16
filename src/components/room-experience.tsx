@@ -11,8 +11,14 @@ import {
   useState,
 } from "react";
 import { useEntryState } from "@/components/entry-provider";
-import type { Hotspot, Scene, SceneTicker } from "@/lib/scenes";
+import type { Hotspot, Scene, SceneSlug, SceneTicker } from "@/lib/scenes";
 import { sceneSlugs, scenes } from "@/lib/scenes";
+import {
+  getInitialPlaylistPosition,
+  getScenePlaylistPlayback,
+  getSyncedPlaylistPositionForTracks,
+  type SyncedPlaylistPosition,
+} from "@/lib/playlist-sync";
 
 type RoomExperienceProps = {
   scene: Scene;
@@ -21,17 +27,6 @@ type RoomExperienceProps = {
 type PointerPosition = {
   x: number;
   y: number;
-};
-
-type SyncedPlaylistPosition = {
-  trackIndex: number;
-  currentTime: number;
-};
-
-type PlaylistTrack = {
-  title: string;
-  src: string;
-  durationSeconds: number;
 };
 
 const devOutlineClasses = [
@@ -95,68 +90,6 @@ function getMediaErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
-}
-
-function getSyncedPlaylistPositionForTracks(
-  tracks: PlaylistTrack[],
-  epochOffsetSeconds = 0,
-): SyncedPlaylistPosition | null {
-  if (tracks.length === 0) {
-    return null;
-  }
-
-  const totalDuration = tracks.reduce(
-    (total, track) => total + track.durationSeconds,
-    0,
-  );
-
-  if (totalDuration <= 0) {
-    return null;
-  }
-
-  let playlistTime =
-    (((Date.now() / 1000 + epochOffsetSeconds) % totalDuration) +
-      totalDuration) %
-    totalDuration;
-
-  for (let index = 0; index < tracks.length; index += 1) {
-    const track = tracks[index];
-
-    if (playlistTime < track.durationSeconds) {
-      return {
-        trackIndex: index,
-        currentTime: playlistTime,
-      };
-    }
-
-    playlistTime -= track.durationSeconds;
-  }
-
-  return {
-    trackIndex: 0,
-    currentTime: 0,
-  };
-}
-
-function getInitialPlaylistPosition(scene: Scene) {
-  const playlist = scene.playlist;
-
-  if (!playlist?.sync?.enabled || playlist.tracks.length === 0) {
-    return {
-      trackIndex: 0,
-      currentTime: 0,
-    };
-  }
-
-  return (
-    getSyncedPlaylistPositionForTracks(
-      playlist.tracks,
-      playlist.sync.epochOffsetSeconds ?? 0,
-    ) ?? {
-      trackIndex: 0,
-      currentTime: 0,
-    }
-  );
 }
 
 type SyncedTickerProps = {
@@ -283,13 +216,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     detachVideoAudio,
     hasEntered,
     markEntered,
+    playRoomPlaylistTrack,
     playlistGain,
     playlistStatus,
-    playPlaylistTrack,
-    primePlaylistTrack,
-    resumePlaylistAudio,
-    setPlaylistAudioLevel,
+    primeRoomPlaylistTrack,
+    resumeRoomPlaylistAudio,
+    setActivePlaylistRoom,
+    setRoomPlaylistAudioLevel,
     setVideoAudioLevel,
+    unlockRoomPlaylists,
     videoGain,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -390,8 +325,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       return;
     }
 
-    primePlaylistTrack(activePlaylistTrack.src);
-  }, [activePlaylistTrack, hasEntered, primePlaylistTrack]);
+    primeRoomPlaylistTrack(scene.slug, activePlaylistTrack.src);
+  }, [activePlaylistTrack, hasEntered, primeRoomPlaylistTrack, scene.slug]);
 
   const syncVideoTime = useCallback(() => {
     const video = videoRef.current;
@@ -443,19 +378,22 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      void resumePlaylistAudio(playlistVolume, false).catch((error: unknown) => {
-        if (isExpectedMediaInterruption(error)) {
-          return;
-        }
+      void resumeRoomPlaylistAudio(scene.slug, playlistVolume, false).catch(
+        (error: unknown) => {
+          if (isExpectedMediaInterruption(error)) {
+            return;
+          }
 
-        setAudioError(getMediaErrorMessage(error, label));
-      });
+          setAudioError(getMediaErrorMessage(error, label));
+        },
+      );
     },
     [
       activePlaylistTrack,
       playlistAudioActive,
       playlistVolume,
-      resumePlaylistAudio,
+      resumeRoomPlaylistAudio,
+      scene.slug,
     ],
   );
 
@@ -607,17 +545,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     }
 
     const playCurrentTrack = () =>
-      playPlaylistTrack({
-      src: activePlaylistTrack.src,
-      startTime: playlistStartTime,
-      volume: playlistVolume,
-      onEnded: () => {
-        setPlaylistTrackIndex(
-          (current) => (current + 1) % playlistTracks.length,
-        );
-        setPlaylistStartTime(0);
-      },
-    });
+      playRoomPlaylistTrack({
+        room: scene.slug,
+        src: activePlaylistTrack.src,
+        startTime: playlistStartTime,
+        volume: playlistVolume,
+        onEnded: () => {
+          setPlaylistTrackIndex(
+            (current) => (current + 1) % playlistTracks.length,
+          );
+          setPlaylistStartTime(0);
+        },
+      });
 
     void playCurrentTrack().catch((error: unknown) => {
       if (isExpectedMediaInterruption(error)) {
@@ -630,16 +569,29 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return undefined;
   }, [
     activePlaylistTrack,
-    playPlaylistTrack,
+    playRoomPlaylistTrack,
     playlistAudioActive,
     playlistStartTime,
     playlistTracks.length,
     playlistVolume,
+    scene.slug,
   ]);
 
   useEffect(() => {
-    setPlaylistAudioLevel(playlistVolume, !playlistAudioActive);
-  }, [playlistAudioActive, playlistVolume, setPlaylistAudioLevel]);
+    if (!playlistEnabled) {
+      setRoomPlaylistAudioLevel(scene.slug, 0, true);
+      return;
+    }
+
+    setActivePlaylistRoom(scene.slug, playlistVolume, !playlistAudioActive);
+  }, [
+    playlistAudioActive,
+    playlistEnabled,
+    playlistVolume,
+    scene.slug,
+    setActivePlaylistRoom,
+    setRoomPlaylistAudioLevel,
+  ]);
 
   async function enterPlanet() {
     const video = videoRef.current;
@@ -650,24 +602,40 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setVideoAudioMuted(false);
     setPlaylistAudioMuted(false);
 
-    if (activePlaylistTrack) {
-      playPromises.push(
-        playPlaylistTrack({
-          src: activePlaylistTrack.src,
-          startTime: playlistStartTime,
-          volume: playlistVolume,
-          onEnded: () => {
-            setPlaylistTrackIndex(
-              (current) => (current + 1) % playlistTracks.length,
-            );
-            setPlaylistStartTime(0);
-          },
-        }),
-      );
+    const roomPlaylistOptions = sceneSlugs.flatMap((slug) => {
+      const targetScene = scenes[slug];
+      const playback = getScenePlaylistPlayback(targetScene);
+
+      if (!playback) {
+        return [];
+      }
+
+      return [
+        {
+          active: slug === scene.slug,
+          room: slug,
+          src: playback.track.src,
+          startTime: playback.currentTime,
+          volume: playback.volume,
+          onEnded:
+            slug === scene.slug
+              ? () => {
+                  setPlaylistTrackIndex(
+                    (current) => (current + 1) % playlistTracks.length,
+                  );
+                  setPlaylistStartTime(0);
+                }
+              : undefined,
+        },
+      ];
+    });
+
+    if (roomPlaylistOptions.length > 0) {
+      playPromises.push(unlockRoomPlaylists(roomPlaylistOptions));
     }
 
     if (video && videoAudioEnabled) {
-      await attachVideoAudio(video, videoVolume);
+      playPromises.push(attachVideoAudio(video, videoVolume));
       video.muted = false;
       setVideoAudioLevel(videoVolume, false);
 
@@ -725,7 +693,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     const targetPlaylist = targetScene.playlist;
 
     if (!targetPlaylist?.enabled || targetPlaylist.tracks.length === 0) {
-      setPlaylistAudioLevel(0, true);
+      setRoomPlaylistAudioLevel(targetScene.slug, 0, true);
       return;
     }
 
@@ -741,12 +709,23 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       return;
     }
 
-    await playPlaylistTrack({
+    await playRoomPlaylistTrack({
+      room: targetScene.slug,
       src: targetTrack.src,
       startTime: position?.currentTime ?? 0,
       volume: targetPlaylist.volume,
-      onEnded: () => undefined,
+      onEnded: () => {
+        if (targetScene.slug !== scene.slug) {
+          return;
+        }
+
+        setPlaylistTrackIndex(
+          (current) => (current + 1) % targetPlaylist.tracks.length,
+        );
+        setPlaylistStartTime(0);
+      },
     });
+    setActivePlaylistRoom(targetScene.slug, targetPlaylist.volume, false);
   }
 
   function switchScene(targetScene: Scene, href: string, mode: "push" | "replace") {
@@ -790,7 +769,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     event.preventDefault();
 
-    const targetSlug = href.replace(/^\/rooms\//, "") as Scene["slug"];
+    const targetSlug = href.replace(/^\/rooms\//, "") as SceneSlug;
     const targetScene = scenes[targetSlug];
 
     setAudioError(null);
@@ -818,7 +797,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     const handleRoomPopState = () => {
       const match = window.location.pathname.match(/^\/rooms\/([^/?#]+)/);
-      const targetSlug = match?.[1] as Scene["slug"] | undefined;
+      const targetSlug = match?.[1] as SceneSlug | undefined;
       const targetScene = targetSlug ? scenes[targetSlug] : undefined;
 
       if (!targetScene || targetScene.slug === scene.slug) {
@@ -1062,7 +1041,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             type="button"
             onPointerDown={() => {
               if (activePlaylistTrack) {
-                primePlaylistTrack(activePlaylistTrack.src);
+                primeRoomPlaylistTrack(scene.slug, activePlaylistTrack.src);
               }
             }}
             onClick={enterPlanet}
