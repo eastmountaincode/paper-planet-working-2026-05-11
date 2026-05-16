@@ -25,6 +25,7 @@ type EntryContextValue = {
   markEntered: () => void;
   playPlaylistTrack: (options: PlayPlaylistTrackOptions) => Promise<void>;
   playlistGain: number;
+  primePlaylistTrack: (src: string) => void;
   playlistStatus: PlaylistStatus;
   resumePlaylistAudio: (volume: number, muted: boolean) => Promise<void>;
   setPlaylistAudioLevel: (volume: number, muted: boolean) => void;
@@ -234,6 +235,26 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     [ensurePlaylistMixer, setPlaylistAudioLevel],
   );
 
+  const primePlaylistTrack = useCallback((src: string) => {
+    const audio = playlistAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    const absoluteSrc = new URL(src, window.location.href).href;
+    const currentOrPendingSrc =
+      audio.currentSrc || audio.getAttribute("src") || "";
+
+    if (currentOrPendingSrc === absoluteSrc) {
+      return;
+    }
+
+    audio.preload = "auto";
+    audio.src = absoluteSrc;
+    audio.load();
+  }, []);
+
   const resumePlaylistAudio = useCallback(
     async (volume: number, muted: boolean) => {
       const mixer = await ensurePlaylistMixer();
@@ -314,6 +335,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       detachVideoAudio,
       playPlaylistTrack,
       playlistGain,
+      primePlaylistTrack,
       playlistStatus,
       resumePlaylistAudio,
       setPlaylistAudioLevel,
@@ -327,6 +349,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       markEntered,
       playPlaylistTrack,
       playlistGain,
+      primePlaylistTrack,
       playlistStatus,
       resumePlaylistAudio,
       setPlaylistAudioLevel,

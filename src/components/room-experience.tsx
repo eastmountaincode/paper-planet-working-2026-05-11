@@ -138,6 +138,27 @@ function getSyncedPlaylistPositionForTracks(
   };
 }
 
+function getInitialPlaylistPosition(scene: Scene) {
+  const playlist = scene.playlist;
+
+  if (!playlist?.sync?.enabled || playlist.tracks.length === 0) {
+    return {
+      trackIndex: 0,
+      currentTime: 0,
+    };
+  }
+
+  return (
+    getSyncedPlaylistPositionForTracks(
+      playlist.tracks,
+      playlist.sync.epochOffsetSeconds ?? 0,
+    ) ?? {
+      trackIndex: 0,
+      currentTime: 0,
+    }
+  );
+}
+
 type SyncedTickerProps = {
   ticker: SceneTicker;
   devBorders: boolean;
@@ -265,6 +286,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     playlistGain,
     playlistStatus,
     playPlaylistTrack,
+    primePlaylistTrack,
     resumePlaylistAudio,
     setPlaylistAudioLevel,
     setVideoAudioLevel,
@@ -282,8 +304,12 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [playlistTrackIndex, setPlaylistTrackIndex] = useState(0);
-  const [playlistStartTime, setPlaylistStartTime] = useState(0);
+  const [playlistTrackIndex, setPlaylistTrackIndex] = useState(
+    () => getInitialPlaylistPosition(scene).trackIndex,
+  );
+  const [playlistStartTime, setPlaylistStartTime] = useState(
+    () => getInitialPlaylistPosition(scene).currentTime,
+  );
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [showTransitionLabel, setShowTransitionLabel] = useState(false);
@@ -357,6 +383,14 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     },
     [playlistEpochOffset, playlistSyncEnabled, playlistTracks],
   );
+
+  useEffect(() => {
+    if (hasEntered || !activePlaylistTrack) {
+      return;
+    }
+
+    primePlaylistTrack(activePlaylistTrack.src);
+  }, [activePlaylistTrack, hasEntered, primePlaylistTrack]);
 
   const syncVideoTime = useCallback(() => {
     const video = videoRef.current;
@@ -810,6 +844,14 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         devOutline(devBorders, 0),
       )}
     >
+      {activePlaylistTrack && !hasEntered ? (
+        <link
+          rel="preload"
+          href={activePlaylistTrack.src}
+          as="audio"
+          crossOrigin="anonymous"
+        />
+      ) : null}
       <section
         className={classNames(
           "flex min-h-dvh items-center justify-center p-3 sm:p-5",
@@ -974,6 +1016,11 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         >
           <button
             type="button"
+            onPointerDown={() => {
+              if (activePlaylistTrack) {
+                primePlaylistTrack(activePlaylistTrack.src);
+              }
+            }}
             onClick={enterPlanet}
             className={classNames(
               "border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black",
