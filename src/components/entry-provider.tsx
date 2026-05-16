@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { sceneSlugs, type SceneSlug } from "@/lib/scenes";
+import type { SceneSlug } from "@/lib/scenes";
 
 type PlayRoomPlaylistTrackOptions = {
   room: SceneSlug;
@@ -67,49 +67,65 @@ type PlaylistStatus = {
   room: SceneSlug | "";
 };
 
-type RoomPlaylistMixer = {
-  audio: HTMLAudioElement;
-  gain: GainNode;
+type PlaylistPlayback = {
+  buffer: AudioBuffer;
+  duration: number;
+  offset: number;
+  requestId: number;
+  room: SceneSlug;
+  source: AudioBufferSourceNode;
+  src: string;
+  startedAt: number;
 };
 
 const EntryContext = createContext<EntryContextValue | null>(null);
+const KEEP_ALIVE_GAIN = 0.00001;
 
-function getMediaError(error: MediaError | null) {
-  if (!error) {
-    return null;
+const initialPlaylistStatus: PlaylistStatus = {
+  currentSrc: "",
+  currentTime: 0,
+  error: null,
+  lastEvent: "init",
+  networkState: 0,
+  paused: true,
+  readyState: 0,
+  room: "",
+};
+
+function getCurrentPlaybackTime(
+  context: AudioContext | null,
+  playback: PlaylistPlayback | null,
+) {
+  if (!context || !playback) {
+    return 0;
   }
 
-  return `${error.code}${error.message ? ` ${error.message}` : ""}`;
+  return Math.min(
+    playback.duration,
+    Math.max(0, context.currentTime - playback.startedAt + playback.offset),
+  );
 }
 
 export function EntryProvider({ children }: { children: ReactNode }) {
   const audioContextRef = useRef<AudioContext | null>(null);
-  const roomAudioRefs = useRef(
-    new Map<SceneSlug, HTMLAudioElement>(),
-  );
-  const roomSourceRefs = useRef(
-    new Map<SceneSlug, MediaElementAudioSourceNode>(),
-  );
-  const roomGainRefs = useRef(new Map<SceneSlug, GainNode>());
-  const roomEndedHandlerRefs = useRef(new Map<SceneSlug, () => void>());
-  const roomRequestIdsRef = useRef(new Map<SceneSlug, number>());
+  const audioBufferPromisesRef = useRef(new Map<string, Promise<AudioBuffer>>());
+  const keepAliveRef = useRef<{
+    gain: GainNode;
+    oscillator: OscillatorNode;
+  } | null>(null);
+  const playlistPlaybackRef = useRef<PlaylistPlayback | null>(null);
+  const playlistGainRef = useRef<GainNode | null>(null);
+  const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
+  const playlistRequestIdRef = useRef(0);
   const videoSourcesRef = useRef(
     new WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>(),
   );
   const videoGainRef = useRef<GainNode | null>(null);
   const activePlaylistRoomRef = useRef<SceneSlug | null>(null);
   const [hasEntered, setHasEntered] = useState(false);
-  const [, setActivePlaylistRoomState] = useState<SceneSlug | null>(null);
-  const [playlistStatus, setPlaylistStatus] = useState<PlaylistStatus>({
-    currentSrc: "",
-    currentTime: 0,
-    error: null,
-    lastEvent: "init",
-    networkState: 0,
-    paused: true,
-    readyState: 0,
-    room: "",
-  });
+  const [playlistStatus, setPlaylistStatus] = useState<PlaylistStatus>(
+    initialPlaylistStatus,
+  );
   const [playlistGain, setPlaylistGain] = useState(0);
   const [videoGain, setVideoGain] = useState(0);
 
@@ -138,72 +154,119 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     return audioContextRef.current;
   }, []);
 
-  const ensureRoomPlaylistMixer = useCallback(
-    (room: SceneSlug): RoomPlaylistMixer | null => {
-      const audio = roomAudioRefs.current.get(room);
-      const context = ensureAudioContext();
+  const ensureKeepAlive = useCallback((context: AudioContext) => {
+    if (keepAliveRef.current) {
+      return;
+    }
 
-      if (!audio || !context) {
-        return null;
-      }
+    const gain = context.createGain();
+    const oscillator = context.createOscillator();
 
-      let gain = roomGainRefs.current.get(room);
+    gain.gain.value = KEEP_ALIVE_GAIN;
+    oscillator.frequency.value = 20;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    keepAliveRef.current = { gain, oscillator };
+  }, []);
 
-      if (!gain) {
-        gain = context.createGain();
-        gain.gain.value = 0;
-        gain.connect(context.destination);
-        roomGainRefs.current.set(room, gain);
-      }
+  const ensurePlaylistGain = useCallback(() => {
+    const context = ensureAudioContext();
 
-      if (!roomSourceRefs.current.has(room)) {
-        const source = context.createMediaElementSource(audio);
-        source.connect(gain);
-        roomSourceRefs.current.set(room, source);
-      }
+    if (!context) {
+      return null;
+    }
 
-      return {
-        audio,
-        gain,
-      };
-    },
-    [ensureAudioContext],
-  );
+    ensureKeepAlive(context);
+
+    if (!playlistGainRef.current) {
+      playlistGainRef.current = context.createGain();
+      playlistGainRef.current.gain.value = 0;
+      playlistGainRef.current.connect(context.destination);
+    }
+
+    return {
+      context,
+      gain: playlistGainRef.current,
+    };
+  }, [ensureAudioContext, ensureKeepAlive]);
 
   const updatePlaylistStatus = useCallback(
-    (room: SceneSlug | null, eventName: string) => {
-      const activeRoom = room ?? activePlaylistRoomRef.current;
-      const audio = activeRoom
-        ? roomAudioRefs.current.get(activeRoom)
-        : undefined;
-
-      if (!activeRoom || !audio) {
-        setPlaylistStatus({
-          currentSrc: "",
-          currentTime: 0,
-          error: null,
-          lastEvent: eventName,
-          networkState: 0,
-          paused: true,
-          readyState: 0,
-          room: "",
-        });
-        return;
-      }
-
-      setPlaylistStatus({
-        currentSrc: audio.currentSrc || audio.getAttribute("src") || "",
-        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
-        error: getMediaError(audio.error),
+    (
+      eventName: string,
+      overrides: Partial<PlaylistStatus> = {},
+    ) => {
+      const context = audioContextRef.current;
+      const playback = playlistPlaybackRef.current;
+      const activeRoom = activePlaylistRoomRef.current;
+      const nextStatus: PlaylistStatus = {
+        currentSrc: playback?.src ?? "",
+        currentTime: getCurrentPlaybackTime(context, playback),
+        error: null,
         lastEvent: eventName,
-        networkState: audio.networkState,
-        paused: audio.paused,
-        readyState: audio.readyState,
-        room: activeRoom,
-      });
+        networkState: playback ? 1 : 0,
+        paused: !playback,
+        readyState: playback ? 4 : 0,
+        room: activeRoom ?? "",
+        ...overrides,
+      };
+
+      setPlaylistStatus(nextStatus);
     },
     [],
   );
+
+  const preloadAudioBuffer = useCallback(
+    (src: string) => {
+      const mixer = ensurePlaylistGain();
+
+      if (!mixer) {
+        return Promise.reject(new Error("Web Audio is not available"));
+      }
+
+      const { context } = mixer;
+      const absoluteSrc = new URL(src, window.location.href).href;
+      const cachedPromise = audioBufferPromisesRef.current.get(absoluteSrc);
+
+      if (cachedPromise) {
+        return cachedPromise;
+      }
+
+      const bufferPromise = fetch(absoluteSrc)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(
+              `Audio request failed: ${response.status} ${response.statusText}`,
+            );
+          }
+
+          return response.arrayBuffer();
+        })
+        .then((arrayBuffer) => context.decodeAudioData(arrayBuffer.slice(0)));
+
+      audioBufferPromisesRef.current.set(absoluteSrc, bufferPromise);
+      return bufferPromise;
+    },
+    [ensurePlaylistGain],
+  );
+
+  const stopPlaylistSource = useCallback(() => {
+    const playback = playlistPlaybackRef.current;
+
+    if (!playback) {
+      return;
+    }
+
+    playback.source.onended = null;
+
+    try {
+      playback.source.stop();
+    } catch {
+      // Already stopped.
+    }
+
+    playlistPlaybackRef.current = null;
+  }, []);
 
   const setVideoAudioLevel = useCallback((volume: number, muted: boolean) => {
     const nextGain = muted ? 0 : volume;
@@ -219,35 +282,35 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const setRoomPlaylistAudioLevel = useCallback(
     (room: SceneSlug, volume: number, muted: boolean) => {
       const nextGain = muted ? 0 : volume;
-      const gain = roomGainRefs.current.get(room);
 
       if (activePlaylistRoomRef.current === room) {
         setPlaylistGain(nextGain);
       }
 
-      if (!gain) {
+      if (!playlistGainRef.current || activePlaylistRoomRef.current !== room) {
         return;
       }
 
-      gain.gain.value = nextGain;
+      playlistGainRef.current.gain.value = nextGain;
     },
     [],
   );
 
   const setActivePlaylistRoom = useCallback(
     (room: SceneSlug, volume: number, muted: boolean) => {
+      const mixer = ensurePlaylistGain();
       const nextGain = muted ? 0 : volume;
+
       activePlaylistRoomRef.current = room;
-      setActivePlaylistRoomState(room);
       setPlaylistGain(nextGain);
 
-      for (const [gainRoom, gain] of roomGainRefs.current.entries()) {
-        gain.gain.value = gainRoom === room ? nextGain : 0;
+      if (mixer) {
+        mixer.gain.gain.value = nextGain;
       }
 
-      updatePlaylistStatus(room, "active-room");
+      updatePlaylistStatus("active-room", { room });
     },
-    [updatePlaylistStatus],
+    [ensurePlaylistGain, updatePlaylistStatus],
   );
 
   const attachVideoAudio = useCallback(
@@ -257,6 +320,8 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       if (!context) {
         return;
       }
+
+      ensureKeepAlive(context);
 
       if (!videoGainRef.current) {
         videoGainRef.current = context.createGain();
@@ -271,7 +336,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
 
       setVideoAudioLevel(volume, false);
     },
-    [ensureAudioContext, setVideoAudioLevel],
+    [ensureAudioContext, ensureKeepAlive, setVideoAudioLevel],
   );
 
   const detachVideoAudio = useCallback((video: HTMLVideoElement) => {
@@ -293,199 +358,199 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       muted = false,
       onEnded,
     }: PlayRoomPlaylistTrackOptions) => {
-      const mixer = ensureRoomPlaylistMixer(room);
+      const mixer = ensurePlaylistGain();
 
       if (!mixer) {
         return;
       }
 
-      const { audio } = mixer;
-      const requestId = (roomRequestIdsRef.current.get(room) ?? 0) + 1;
-      roomRequestIdsRef.current.set(room, requestId);
-
-      if (onEnded) {
-        roomEndedHandlerRefs.current.set(room, onEnded);
-      } else {
-        roomEndedHandlerRefs.current.delete(room);
-      }
-
-      audio.muted = false;
-      audio.volume = 1;
-      setRoomPlaylistAudioLevel(room, volume, muted);
-
+      const { context, gain } = mixer;
+      const requestId = playlistRequestIdRef.current + 1;
       const absoluteSrc = new URL(src, window.location.href).href;
-      const currentOrPendingSrc =
-        audio.currentSrc || audio.getAttribute("src") || "";
-      const sourceChanged = currentOrPendingSrc !== absoluteSrc;
+      const currentPlayback = playlistPlaybackRef.current;
+      const nextGain = muted ? 0 : volume;
 
-      if (sourceChanged) {
-        audio.pause();
-        audio.src = absoluteSrc;
-        audio.load();
+      playlistRequestIdRef.current = requestId;
+      playlistEndedHandlerRef.current = onEnded ?? null;
+
+      if (currentPlayback?.src === absoluteSrc && currentPlayback.room === room) {
+        const currentTime = getCurrentPlaybackTime(context, currentPlayback);
+
+        if (Math.abs(currentTime - startTime) <= 1.5) {
+          activePlaylistRoomRef.current = room;
+          setPlaylistGain(nextGain);
+          gain.gain.value = nextGain;
+          updatePlaylistStatus("play-reused", { room });
+          return;
+        }
       }
 
-      const seekToStartTime = () => {
-        if (
-          roomRequestIdsRef.current.get(room) !== requestId ||
-          !Number.isFinite(startTime) ||
-          !Number.isFinite(audio.duration)
-        ) {
+      updatePlaylistStatus("buffering", {
+        currentSrc: absoluteSrc,
+        networkState: 2,
+        paused: !currentPlayback,
+        readyState: 0,
+        room,
+      });
+
+      try {
+        const buffer = await preloadAudioBuffer(absoluteSrc);
+
+        if (playlistRequestIdRef.current !== requestId) {
           return;
         }
 
-        const nextTime = Math.min(startTime, Math.max(audio.duration - 0.25, 0));
+        const offset = Math.min(
+          Math.max(0, Number.isFinite(startTime) ? startTime : 0),
+          Math.max(buffer.duration - 0.05, 0),
+        );
+        const source = context.createBufferSource();
+        const playback: PlaylistPlayback = {
+          buffer,
+          duration: buffer.duration,
+          offset,
+          requestId,
+          room,
+          source,
+          src: absoluteSrc,
+          startedAt: context.currentTime,
+        };
 
-        if (sourceChanged || Math.abs(audio.currentTime - nextTime) > 1.5) {
-          audio.currentTime = nextTime;
+        activePlaylistRoomRef.current = room;
+        setPlaylistGain(nextGain);
+        gain.gain.value = nextGain;
+        stopPlaylistSource();
+        source.buffer = buffer;
+        source.connect(gain);
+        source.onended = () => {
+          if (
+            playlistPlaybackRef.current?.requestId !== requestId ||
+            getCurrentPlaybackTime(context, playback) < playback.duration - 0.25
+          ) {
+            return;
+          }
+
+          playlistPlaybackRef.current = null;
+          updatePlaylistStatus("ended", {
+            currentSrc: absoluteSrc,
+            currentTime: playback.duration,
+            paused: true,
+            room,
+          });
+          playlistEndedHandlerRef.current?.();
+        };
+        playlistPlaybackRef.current = playback;
+        source.start(0, offset);
+        updatePlaylistStatus("playing", { room });
+      } catch (error: unknown) {
+        if (playlistRequestIdRef.current === requestId) {
+          updatePlaylistStatus("error", {
+            currentSrc: absoluteSrc,
+            error:
+              error instanceof Error ? error.message : "Playlist audio failed",
+            networkState: 3,
+            paused: true,
+            readyState: 0,
+            room,
+          });
         }
-      };
 
-      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
-        seekToStartTime();
-      } else {
-        audio.addEventListener("loadedmetadata", seekToStartTime, {
-          once: true,
-        });
+        throw error;
       }
-
-      if (audio.paused || sourceChanged) {
-        await audio.play();
-      }
-
-      updatePlaylistStatus(room, "play-request");
     },
-    [ensureRoomPlaylistMixer, setRoomPlaylistAudioLevel, updatePlaylistStatus],
+    [ensurePlaylistGain, preloadAudioBuffer, stopPlaylistSource, updatePlaylistStatus],
   );
 
   const primeRoomPlaylistTrack = useCallback(
     (room: SceneSlug, src: string) => {
-      const audio = roomAudioRefs.current.get(room);
-
-      if (!audio) {
-        return;
-      }
-
       const absoluteSrc = new URL(src, window.location.href).href;
-      const currentOrPendingSrc =
-        audio.currentSrc || audio.getAttribute("src") || "";
 
-      if (currentOrPendingSrc === absoluteSrc) {
-        return;
-      }
-
-      audio.preload = "auto";
-      audio.src = absoluteSrc;
-      audio.load();
-      updatePlaylistStatus(room, "prime");
+      void preloadAudioBuffer(absoluteSrc)
+        .then(() => {
+          if (activePlaylistRoomRef.current === room) {
+            updatePlaylistStatus("primed", { currentSrc: absoluteSrc, room });
+          }
+        })
+        .catch((error: unknown) => {
+          if (activePlaylistRoomRef.current === room) {
+            updatePlaylistStatus("prime-error", {
+              currentSrc: absoluteSrc,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Playlist preload failed",
+              networkState: 3,
+              room,
+            });
+          }
+        });
     },
-    [updatePlaylistStatus],
+    [preloadAudioBuffer, updatePlaylistStatus],
   );
 
   const resumeRoomPlaylistAudio = useCallback(
     async (room: SceneSlug, volume: number, muted: boolean) => {
-      const mixer = ensureRoomPlaylistMixer(room);
+      const context = ensureAudioContext();
+
+      if (!context) {
+        return;
+      }
+
+      ensureKeepAlive(context);
+      setRoomPlaylistAudioLevel(room, volume, muted);
+      updatePlaylistStatus("resume-request", { room });
+    },
+    [
+      ensureAudioContext,
+      ensureKeepAlive,
+      setRoomPlaylistAudioLevel,
+      updatePlaylistStatus,
+    ],
+  );
+
+  const unlockRoomPlaylists = useCallback(
+    async (options: UnlockRoomPlaylistOptions[]) => {
+      const mixer = ensurePlaylistGain();
 
       if (!mixer) {
         return;
       }
 
-      const { audio } = mixer;
-      audio.muted = false;
-      audio.volume = 1;
-      setRoomPlaylistAudioLevel(room, volume, muted);
+      ensureKeepAlive(mixer.context);
 
-      if (!muted && audio.currentSrc && audio.paused) {
-        await audio.play();
+      for (const option of options) {
+        if (!option.active) {
+          primeRoomPlaylistTrack(option.room, option.src);
+        }
       }
 
-      updatePlaylistStatus(room, "resume-request");
-    },
-    [ensureRoomPlaylistMixer, setRoomPlaylistAudioLevel, updatePlaylistStatus],
-  );
-
-  const unlockRoomPlaylists = useCallback(
-    async (options: UnlockRoomPlaylistOptions[]) => {
-      const results = await Promise.allSettled(
-        options.map((option) =>
-          playRoomPlaylistTrack({
-            ...option,
-            muted: !option.active || option.muted,
-            volume: option.active ? option.volume : 0,
-          }),
-        ),
-      );
       const activeOption = options.find((option) => option.active);
 
-      if (activeOption) {
-        setActivePlaylistRoom(
-          activeOption.room,
-          activeOption.volume,
-          Boolean(activeOption.muted),
-        );
+      if (!activeOption) {
+        return;
       }
 
-      const failedResult = results.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected",
-      );
-
-      if (failedResult) {
-        throw failedResult.reason;
-      }
+      await playRoomPlaylistTrack({
+        ...activeOption,
+        muted: Boolean(activeOption.muted),
+      });
     },
-    [playRoomPlaylistTrack, setActivePlaylistRoom],
+    [
+      ensureKeepAlive,
+      ensurePlaylistGain,
+      playRoomPlaylistTrack,
+      primeRoomPlaylistTrack,
+    ],
   );
 
   useEffect(() => {
-    const eventNames = [
-      "abort",
-      "canplay",
-      "emptied",
-      "ended",
-      "error",
-      "loadedmetadata",
-      "pause",
-      "play",
-      "playing",
-      "stalled",
-      "suspend",
-      "waiting",
-    ] as const;
-    const listeners: Array<{
-      audio: HTMLAudioElement;
-      eventName: (typeof eventNames)[number];
-      listener: () => void;
-    }> = [];
-
-    for (const room of sceneSlugs) {
-      const audio = roomAudioRefs.current.get(room);
-
-      if (!audio) {
-        continue;
-      }
-
-      for (const eventName of eventNames) {
-        const listener = () => {
-          if (room === activePlaylistRoomRef.current) {
-            updatePlaylistStatus(room, eventName);
-          }
-        };
-        audio.addEventListener(eventName, listener);
-        listeners.push({ audio, eventName, listener });
-      }
-    }
-
     const interval = window.setInterval(
-      () => updatePlaylistStatus(activePlaylistRoomRef.current, "tick"),
+      () => updatePlaylistStatus("tick"),
       1000,
     );
-    updatePlaylistStatus(activePlaylistRoomRef.current, "mounted");
 
     return () => {
       window.clearInterval(interval);
-      for (const { audio, eventName, listener } of listeners) {
-        audio.removeEventListener(eventName, listener);
-      }
     };
   }, [updatePlaylistStatus]);
 
@@ -525,24 +590,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <EntryContext.Provider value={value}>
-      {children}
-      {sceneSlugs.map((room) => (
-        <audio
-          crossOrigin="anonymous"
-          key={room}
-          preload="auto"
-          ref={(audio) => {
-            if (audio) {
-              roomAudioRefs.current.set(room, audio);
-            } else {
-              roomAudioRefs.current.delete(room);
-            }
-          }}
-          onEnded={() => roomEndedHandlerRefs.current.get(room)?.()}
-        />
-      ))}
-    </EntryContext.Provider>
+    <EntryContext.Provider value={value}>{children}</EntryContext.Provider>
   );
 }
 
