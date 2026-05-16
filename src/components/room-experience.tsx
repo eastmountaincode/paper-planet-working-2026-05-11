@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { hasEnteredPlanet, markPlanetEntered } from "@/lib/entry-state";
+import { useEntryState } from "@/components/entry-provider";
 import type { Hotspot, Scene, SceneTicker } from "@/lib/scenes";
 import { sceneSlugs, scenes } from "@/lib/scenes";
 
@@ -176,7 +176,7 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
     <div
       ref={viewportRef}
       className={classNames(
-        "pointer-events-none absolute inset-x-0 bottom-4 z-20 overflow-hidden py-3 text-white",
+        "pointer-events-none absolute inset-x-0 bottom-1 z-20 overflow-hidden py-2 text-white sm:bottom-2 sm:py-3",
         devOutline(devBorders, 5),
       )}
       aria-label={ticker.text}
@@ -210,6 +210,7 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
 export function RoomExperience({ scene }: RoomExperienceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { hasEntered, markEntered } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const playlistAudioRef = useRef<HTMLAudioElement>(null);
   const debugHotspots =
@@ -220,8 +221,6 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   const [devBorders, setDevBorders] = useState(
     searchParams.get("dev") === "1",
   );
-  const [entryStateChecked, setEntryStateChecked] = useState(false);
-  const [hasEntered, setHasEntered] = useState(false);
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -365,22 +364,11 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   }, [syncVideoTime, videoAudioActive, videoVolume]);
 
   useEffect(() => {
-    const refreshEntryState = () => {
-      if (hasEnteredPlanet()) {
-        setHasEntered(true);
-      }
-
-      setEntryStateChecked(true);
-    };
-
-    const timeout = window.setTimeout(refreshEntryState, 0);
     const handlePageShow = () => {
-      refreshEntryState();
       window.setTimeout(resumeRoomMedia, 0);
     };
 
     const handlePopState = () => {
-      refreshEntryState();
       window.setTimeout(resumeRoomMedia, 0);
     };
 
@@ -388,7 +376,6 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     window.addEventListener("popstate", handlePopState);
 
     return () => {
-      window.clearTimeout(timeout);
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("popstate", handlePopState);
     };
@@ -548,8 +535,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     const playlistAudio = playlistAudioRef.current;
 
     setAudioError(null);
-    markPlanetEntered();
-    setHasEntered(true);
+    markEntered();
     setVideoAudioMuted(false);
     setPlaylistAudioMuted(false);
 
@@ -615,7 +601,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
 
       window.setTimeout(() => {
         router.push(href);
-      }, 80);
+      }, 45);
     },
     [isExiting, router],
   );
@@ -839,7 +825,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
 
       <div
         className={classNames(
-          "fixed inset-0 z-30 bg-black transition-opacity duration-100",
+          "fixed inset-0 z-30 bg-black transition-opacity duration-[60ms]",
           transitionActive
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
@@ -854,14 +840,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         </div>
       ) : null}
 
-      {!entryStateChecked ? (
-        <div
-          className={classNames(
-            "fixed inset-0 z-40 bg-black",
-            devOutline(devBorders, 4),
-          )}
-        />
-      ) : !hasEntered ? (
+      {!hasEntered ? (
         <div
           className={classNames(
             "fixed inset-0 z-40 flex items-center justify-center bg-black text-white",
@@ -876,7 +855,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
               devOutline(devBorders, 5),
             )}
           >
-            Enter Planet
+            Enter
           </button>
         </div>
       ) : null}
