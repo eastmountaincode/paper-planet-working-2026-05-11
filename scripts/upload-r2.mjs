@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 
 const envFile = ".env.local";
 const playlistManifestFile = "src/lib/scene-playlists.json";
+const normalizedAudioRoot = "../assets/audio/r2-normalized";
 
 const videoUploads = [
   {
@@ -27,11 +28,17 @@ function getPlaylistUploads() {
   const manifest = JSON.parse(readFileSync(playlistManifestFile, "utf8"));
 
   return Object.values(manifest).flatMap((playlist) =>
-    playlist.tracks.map((track) => ({
-      source: `../${track.sourceFile}`,
-      key: track.key,
-      contentType: "audio/mpeg",
-    })),
+    playlist.tracks.map((track) => {
+      const normalizedSource = `${normalizedAudioRoot}/${track.key}`;
+
+      return {
+        source: existsSync(normalizedSource)
+          ? normalizedSource
+          : `../${track.sourceFile}`,
+        key: track.key,
+        contentType: "audio/mpeg",
+      };
+    }),
   );
 }
 
@@ -76,18 +83,35 @@ function requireEnv(env, keys) {
   }
 }
 
-function runAws(args, env) {
-  const result = spawnSync("aws", args, {
-    env,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+function runAws(args, env, options = {}) {
+  const retries = options.retries ?? 0;
+  const timeout = options.timeoutMs ?? 120_000;
+  let lastError = "";
 
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "aws command failed");
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const result = spawnSync("aws", args, {
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout,
+    });
+
+    if (result.status === 0) {
+      return result.stdout;
+    }
+
+    lastError =
+      result.error?.message ||
+      result.stderr ||
+      result.stdout ||
+      "aws command failed";
+
+    if (attempt < retries) {
+      console.warn(`Retrying AWS command after failure: ${lastError.trim()}`);
+    }
   }
 
-  return result.stdout;
+  throw new Error(lastError);
 }
 
 function main() {
@@ -103,10 +127,23 @@ function main() {
   env.AWS_ACCESS_KEY_ID = env.R2_ACCESS_KEY_ID;
   env.AWS_SECRET_ACCESS_KEY = env.R2_SECRET_ACCESS_KEY;
   env.AWS_DEFAULT_REGION = "auto";
+  env.AWS_CLI_CONNECT_TIMEOUT = env.AWS_CLI_CONNECT_TIMEOUT || "10";
+  env.AWS_CLI_READ_TIMEOUT = env.AWS_CLI_READ_TIMEOUT || "30";
 
   const cacheControl =
     env.R2_CACHE_CONTROL || "public, max-age=31536000, immutable";
-  const uploads = [...videoUploads, ...getPlaylistUploads()];
+  const uploadMode = process.argv.includes("--audio-only")
+    ? "audio"
+    : process.argv.includes("--video-only")
+      ? "video"
+      : "all";
+  const playlistUploads = getPlaylistUploads();
+  const uploads =
+    uploadMode === "audio"
+      ? playlistUploads
+      : uploadMode === "video"
+        ? videoUploads
+        : [...videoUploads, ...playlistUploads];
 
   console.log("Verifying R2 bucket access...");
   runAws(
@@ -128,9 +165,11 @@ function main() {
         upload.contentType,
         "--cache-control",
         cacheControl,
+        "--no-progress",
         "--only-show-errors",
       ],
       env,
+      { retries: 2 },
     );
   }
 

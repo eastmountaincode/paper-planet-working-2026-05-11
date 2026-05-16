@@ -197,7 +197,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         audio.currentSrc !== absoluteSrc && audio.getAttribute("src") !== src;
 
       if (sourceChanged) {
-        audio.src = src;
+        audio.src = absoluteSrc;
         audio.load();
       }
 

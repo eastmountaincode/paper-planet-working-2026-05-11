@@ -11,13 +11,13 @@ const playlistDefinitions = {
     name: "HOME - Construction Zone",
     folder:
       "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
-    keyPrefix: "audio/construction",
+    keyPrefix: "audio/normalized/construction",
     playbackMode: "ordered",
   },
   hq: {
     name: "HQ",
     folder: "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
-    keyPrefix: "audio/hq",
+    keyPrefix: "audio/normalized/hq",
     playbackMode: "deterministic-random",
     shuffleSeed: "paper-planet-hq-v1",
   },
