@@ -98,6 +98,13 @@ type SyncedTickerProps = {
 };
 
 const TICKER_GAP_PIXELS = 96;
+const ROOM_TRANSITION_MS = 200;
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
 
 function TickerText({ text }: { text: string }) {
   const characters = Array.from(text);
@@ -245,6 +252,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [playlistStartTime, setPlaylistStartTime] = useState(
     () => getInitialPlaylistPosition(scene).currentTime,
   );
+  const fadeOutInProgressRef = useRef(false);
+  const navigationIdRef = useRef(0);
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [showTransitionLabel, setShowTransitionLabel] = useState(false);
@@ -291,6 +300,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   }, [transitionActive]);
 
   function markVideoReady() {
+    if (fadeOutInProgressRef.current) {
+      return;
+    }
+
     setVideoReady(true);
     setIsExiting(false);
     setShowTransitionLabel(false);
@@ -692,7 +705,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setPlaylistAudioMuted((current) => !current);
   }
 
-  async function playPlaylistForScene(targetScene: Scene) {
+  const playPlaylistForScene = useCallback(async (targetScene: Scene) => {
     if (!hasEntered || playlistAudioMuted) {
       return;
     }
@@ -733,11 +746,19 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       },
     });
     setActivePlaylistRoom(targetScene.slug, targetPlaylist.volume, false);
-  }
+  }, [
+    hasEntered,
+    playRoomPlaylistTrack,
+    playlistAudioMuted,
+    scene.slug,
+    setActivePlaylistRoom,
+    setRoomPlaylistAudioLevel,
+  ]);
 
-  function switchScene(targetScene: Scene, href: string, mode: "push" | "replace") {
+  const switchScene = useCallback((targetScene: Scene, href: string, mode: "push" | "replace") => {
     const position = getInitialPlaylistPosition(targetScene);
 
+    fadeOutInProgressRef.current = false;
     setPointerPosition(null);
     setActiveScene(targetScene);
     setPlaylistTrackIndex(position.trackIndex);
@@ -751,7 +772,42 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         href,
       );
     }
-  }
+  }, []);
+
+  const transitionToScene = useCallback(
+    async (targetScene: Scene, href: string, mode: "push" | "replace") => {
+      const navigationId = navigationIdRef.current + 1;
+      navigationIdRef.current = navigationId;
+      fadeOutInProgressRef.current = true;
+
+      setAudioError(null);
+      setIsExiting(true);
+      setShowTransitionLabel(false);
+
+      const playlistPromise =
+        hasEntered && !playlistAudioMuted
+          ? playPlaylistForScene(targetScene).catch((error: unknown) => {
+              if (isExpectedMediaInterruption(error)) {
+                return;
+              }
+
+              setAudioError(
+                getMediaErrorMessage(error, "Playlist audio blocked"),
+              );
+            })
+          : Promise.resolve();
+
+      await wait(ROOM_TRANSITION_MS);
+
+      if (navigationIdRef.current !== navigationId) {
+        return;
+      }
+
+      switchScene(targetScene, href, mode);
+      void playlistPromise;
+    },
+    [hasEntered, playPlaylistForScene, playlistAudioMuted, switchScene],
+  );
 
   async function handleRoomNavigation(
     event: MouseEvent<HTMLAnchorElement>,
@@ -779,22 +835,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     const targetSlug = href.replace(/^\/rooms\//, "") as SceneSlug;
     const targetScene = scenes[targetSlug];
 
-    setAudioError(null);
-    setIsExiting(true);
-    setShowTransitionLabel(false);
-
     if (targetScene) {
-      try {
-        await playPlaylistForScene(targetScene);
-      } catch (error: unknown) {
-        if (!isExpectedMediaInterruption(error)) {
-          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
-        }
-      }
-    }
-
-    if (targetScene) {
-      switchScene(targetScene, href, "push");
+      void transitionToScene(targetScene, href, "push");
       return;
     }
 
@@ -811,20 +853,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      setAudioError(null);
-      setIsExiting(true);
-      setShowTransitionLabel(false);
-      switchScene(targetScene, `/rooms/${targetScene.slug}`, "replace");
-
-      if (hasEntered && !playlistAudioMuted) {
-        void playPlaylistForScene(targetScene).catch((error: unknown) => {
-          if (isExpectedMediaInterruption(error)) {
-            return;
-          }
-
-          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
-        });
-      }
+      void transitionToScene(
+        targetScene,
+        `/rooms/${targetScene.slug}`,
+        "replace",
+      );
     };
 
     window.addEventListener("popstate", handleRoomPopState);
@@ -832,7 +865,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       window.removeEventListener("popstate", handleRoomPopState);
     };
-  });
+  }, [scene.slug, transitionToScene]);
 
   function getActionHref(action: Hotspot["action"]) {
     if (action.type === "navigate") {
@@ -1022,7 +1055,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
       <div
         className={classNames(
-          "fixed inset-0 z-30 bg-black transition-opacity duration-200",
+          "fixed inset-0 z-40 bg-black transition-opacity duration-200",
           transitionActive
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
@@ -1032,7 +1065,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       />
 
       {showTransitionLabel && transitionActive ? (
-        <div className="pointer-events-none fixed inset-0 z-[31] flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-white/70">
+        <div className="pointer-events-none fixed inset-0 z-[41] flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-white/70">
           Loading
         </div>
       ) : null}
@@ -1040,7 +1073,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       {!hasEntered ? (
         <div
           className={classNames(
-            "fixed inset-0 z-40 flex items-center justify-center bg-black text-white",
+            "fixed inset-0 z-50 flex items-center justify-center bg-black text-white",
             devOutline(devBorders, 4),
           )}
         >
