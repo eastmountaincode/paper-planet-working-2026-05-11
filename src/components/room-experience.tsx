@@ -694,55 +694,59 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setPlaylistAudioMuted((current) => !current);
   }
 
-  const playPlaylistForScene = useCallback(async (targetScene: Scene) => {
-    if (!hasEntered || playlistAudioMuted) {
-      return;
-    }
+  const playPlaylistForScene = useCallback(
+    async (targetScene: Scene, muted = false) => {
+      if (!hasEntered || playlistAudioMuted) {
+        return;
+      }
 
-    const targetPlaylist = targetScene.playlist;
+      const targetPlaylist = targetScene.playlist;
 
-    if (!targetPlaylist?.enabled || targetPlaylist.tracks.length === 0) {
-      setRoomPlaylistAudioLevel(targetScene.slug, 0, true);
-      return;
-    }
+      if (!targetPlaylist?.enabled || targetPlaylist.tracks.length === 0) {
+        setRoomPlaylistAudioLevel(targetScene.slug, 0, true);
+        return;
+      }
 
-    const position = getSyncedPlaylistPositionForTracks(
-      targetPlaylist.tracks,
-      targetPlaylist.sync?.epochOffsetSeconds ?? 0,
-    );
-    const targetTrack = position
-      ? targetPlaylist.tracks[position.trackIndex]
-      : targetPlaylist.tracks[0];
+      const position = getSyncedPlaylistPositionForTracks(
+        targetPlaylist.tracks,
+        targetPlaylist.sync?.epochOffsetSeconds ?? 0,
+      );
+      const targetTrack = position
+        ? targetPlaylist.tracks[position.trackIndex]
+        : targetPlaylist.tracks[0];
 
-    if (!targetTrack) {
-      return;
-    }
+      if (!targetTrack) {
+        return;
+      }
 
-    await playRoomPlaylistTrack({
-      room: targetScene.slug,
-      src: targetTrack.src,
-      startTime: position?.currentTime ?? 0,
-      volume: targetPlaylist.volume,
-      onEnded: () => {
-        if (targetScene.slug !== scene.slug) {
-          return;
-        }
+      await playRoomPlaylistTrack({
+        room: targetScene.slug,
+        src: targetTrack.src,
+        startTime: position?.currentTime ?? 0,
+        volume: targetPlaylist.volume,
+        muted,
+        onEnded: () => {
+          if (targetScene.slug !== scene.slug) {
+            return;
+          }
 
-        setPlaylistTrackIndex(
-          (current) => (current + 1) % targetPlaylist.tracks.length,
-        );
-        setPlaylistStartTime(0);
-      },
-    });
-    setActivePlaylistRoom(targetScene.slug, targetPlaylist.volume, false);
-  }, [
-    hasEntered,
-    playRoomPlaylistTrack,
-    playlistAudioMuted,
-    scene.slug,
-    setActivePlaylistRoom,
-    setRoomPlaylistAudioLevel,
-  ]);
+          setPlaylistTrackIndex(
+            (current) => (current + 1) % targetPlaylist.tracks.length,
+          );
+          setPlaylistStartTime(0);
+        },
+      });
+      setActivePlaylistRoom(targetScene.slug, targetPlaylist.volume, muted);
+    },
+    [
+      hasEntered,
+      playRoomPlaylistTrack,
+      playlistAudioMuted,
+      scene.slug,
+      setActivePlaylistRoom,
+      setRoomPlaylistAudioLevel,
+    ],
+  );
 
   const switchScene = useCallback((targetScene: Scene, href: string, mode: "push" | "replace") => {
     const position = getInitialPlaylistPosition(targetScene);
@@ -775,9 +779,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       setRoomPlaylistAudioLevel(scene.slug, playlistVolume, true);
       setIsExiting(true);
 
+      await wait(ROOM_TRANSITION_MS);
+
+      if (navigationIdRef.current !== navigationId) {
+        return;
+      }
+
       const playlistPromise =
         hasEntered && !playlistAudioMuted
-          ? playPlaylistForScene(targetScene).catch((error: unknown) => {
+          ? playPlaylistForScene(targetScene, true).catch((error: unknown) => {
               if (isExpectedMediaInterruption(error)) {
                 return;
               }
@@ -787,12 +797,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
               );
             })
           : Promise.resolve();
-
-      await wait(ROOM_TRANSITION_MS);
-
-      if (navigationIdRef.current !== navigationId) {
-        return;
-      }
 
       switchScene(targetScene, href, mode);
       void playlistPromise;

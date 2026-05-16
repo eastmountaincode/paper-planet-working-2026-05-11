@@ -80,6 +80,7 @@ type PlaylistPlayback = {
 
 const EntryContext = createContext<EntryContextValue | null>(null);
 const KEEP_ALIVE_GAIN = 0.00001;
+const AUDIO_RAMP_SECONDS = 0.2;
 
 const initialPlaylistStatus: PlaylistStatus = {
   currentSrc: "",
@@ -104,6 +105,14 @@ function getCurrentPlaybackTime(
     playback.duration,
     Math.max(0, context.currentTime - playback.startedAt + playback.offset),
   );
+}
+
+function rampGain(gain: GainNode, value: number) {
+  const now = gain.context.currentTime;
+
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(gain.gain.value, now);
+  gain.gain.linearRampToValueAtTime(value, now + AUDIO_RAMP_SECONDS);
 }
 
 export function EntryProvider({ children }: { children: ReactNode }) {
@@ -276,7 +285,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    videoGainRef.current.gain.value = nextGain;
+    rampGain(videoGainRef.current, nextGain);
   }, []);
 
   const setRoomPlaylistAudioLevel = useCallback(
@@ -291,7 +300,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      playlistGainRef.current.gain.value = nextGain;
+      rampGain(playlistGainRef.current, nextGain);
     },
     [],
   );
@@ -305,7 +314,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       setPlaylistGain(nextGain);
 
       if (mixer) {
-        mixer.gain.gain.value = nextGain;
+        rampGain(mixer.gain, nextGain);
       }
 
       updatePlaylistStatus("active-room", { room });
@@ -379,7 +388,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         if (Math.abs(currentTime - startTime) <= 1.5) {
           activePlaylistRoomRef.current = room;
           setPlaylistGain(nextGain);
-          gain.gain.value = nextGain;
+          rampGain(gain, nextGain);
           updatePlaylistStatus("play-reused", { room });
           return;
         }
@@ -418,7 +427,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
 
         activePlaylistRoomRef.current = room;
         setPlaylistGain(nextGain);
-        gain.gain.value = nextGain;
+        rampGain(gain, nextGain);
         stopPlaylistSource();
         source.buffer = buffer;
         source.connect(gain);
