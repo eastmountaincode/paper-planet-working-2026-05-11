@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,40 +19,160 @@ type PlayPlaylistTrackOptions = {
 };
 
 type EntryContextValue = {
+  attachVideoAudio: (video: HTMLVideoElement, volume: number) => Promise<void>;
+  detachVideoAudio: (video: HTMLVideoElement) => void;
   hasEntered: boolean;
   markEntered: () => void;
   pausePlaylistAudio: () => void;
   playPlaylistTrack: (options: PlayPlaylistTrackOptions) => Promise<void>;
+  playlistStatus: PlaylistStatus;
+  setVideoAudioLevel: (volume: number, muted: boolean) => void;
+};
+
+type PlaylistStatus = {
+  currentSrc: string;
+  currentTime: number;
+  error: string | null;
+  lastEvent: string;
+  networkState: number;
+  paused: boolean;
+  readyState: number;
 };
 
 const EntryContext = createContext<EntryContextValue | null>(null);
 
 export function EntryProvider({ children }: { children: ReactNode }) {
+  const audioContextRef = useRef<AudioContext | null>(null);
   const playlistAudioRef = useRef<HTMLAudioElement>(null);
+  const playlistSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const playlistGainRef = useRef<GainNode | null>(null);
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
   const playlistRequestIdRef = useRef(0);
+  const videoSourcesRef = useRef(
+    new WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>(),
+  );
+  const videoGainRef = useRef<GainNode | null>(null);
   const [hasEntered, setHasEntered] = useState(false);
+  const [playlistStatus, setPlaylistStatus] = useState<PlaylistStatus>({
+    currentSrc: "",
+    currentTime: 0,
+    error: null,
+    lastEvent: "init",
+    networkState: 0,
+    paused: true,
+    readyState: 0,
+  });
 
   const markEntered = useCallback(() => {
     setHasEntered(true);
   }, []);
 
+  const ensureAudioContext = useCallback(async () => {
+    if (!audioContextRef.current) {
+      const AudioContextConstructor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+
+      if (!AudioContextConstructor) {
+        return null;
+      }
+
+      audioContextRef.current = new AudioContextConstructor();
+    }
+
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
+  }, []);
+
+  const ensurePlaylistMixer = useCallback(async () => {
+    const audio = playlistAudioRef.current;
+    const context = await ensureAudioContext();
+
+    if (!audio || !context) {
+      return null;
+    }
+
+    if (!playlistGainRef.current) {
+      playlistGainRef.current = context.createGain();
+      playlistGainRef.current.connect(context.destination);
+    }
+
+    if (!playlistSourceRef.current) {
+      playlistSourceRef.current = context.createMediaElementSource(audio);
+      playlistSourceRef.current.connect(playlistGainRef.current);
+    }
+
+    return {
+      audio,
+      gain: playlistGainRef.current,
+    };
+  }, [ensureAudioContext]);
+
   const pausePlaylistAudio = useCallback(() => {
     playlistAudioRef.current?.pause();
   }, []);
 
-  const playPlaylistTrack = useCallback(
-    async ({ src, startTime, volume, onEnded }: PlayPlaylistTrackOptions) => {
-      const audio = playlistAudioRef.current;
+  const setVideoAudioLevel = useCallback((volume: number, muted: boolean) => {
+    if (!videoGainRef.current) {
+      return;
+    }
 
-      if (!audio) {
+    videoGainRef.current.gain.value = muted ? 0 : volume;
+  }, []);
+
+  const attachVideoAudio = useCallback(
+    async (video: HTMLVideoElement, volume: number) => {
+      const context = await ensureAudioContext();
+
+      if (!context) {
         return;
       }
 
+      if (!videoGainRef.current) {
+        videoGainRef.current = context.createGain();
+        videoGainRef.current.connect(context.destination);
+      }
+
+      if (!videoSourcesRef.current.has(video)) {
+        const source = context.createMediaElementSource(video);
+        source.connect(videoGainRef.current);
+        videoSourcesRef.current.set(video, source);
+      }
+
+      setVideoAudioLevel(volume, false);
+    },
+    [ensureAudioContext, setVideoAudioLevel],
+  );
+
+  const detachVideoAudio = useCallback((video: HTMLVideoElement) => {
+    const source = videoSourcesRef.current.get(video);
+
+    if (!source) {
+      return;
+    }
+
+    source.disconnect();
+    videoSourcesRef.current.delete(video);
+  }, []);
+
+  const playPlaylistTrack = useCallback(
+    async ({ src, startTime, volume, onEnded }: PlayPlaylistTrackOptions) => {
+      const mixer = await ensurePlaylistMixer();
+
+      if (!mixer) {
+        return;
+      }
+
+      const { audio, gain } = mixer;
       const requestId = playlistRequestIdRef.current + 1;
       playlistRequestIdRef.current = requestId;
       playlistEndedHandlerRef.current = onEnded ?? null;
-      audio.volume = volume;
+      audio.volume = 1;
+      gain.gain.value = volume;
 
       const absoluteSrc = new URL(src, window.location.href).href;
       const sourceChanged =
@@ -93,23 +214,89 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         await audio.play();
       }
     },
-    [],
+    [ensurePlaylistMixer],
   );
+
+  useEffect(() => {
+    const audio = playlistAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    const updateStatus = (eventName: string) => {
+      setPlaylistStatus({
+        currentSrc: audio.currentSrc || audio.getAttribute("src") || "",
+        currentTime: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+        error: audio.error
+          ? `${audio.error.code}${audio.error.message ? ` ${audio.error.message}` : ""}`
+          : null,
+        lastEvent: eventName,
+        networkState: audio.networkState,
+        paused: audio.paused,
+        readyState: audio.readyState,
+      });
+    };
+
+    const eventNames = [
+      "abort",
+      "canplay",
+      "emptied",
+      "ended",
+      "error",
+      "loadedmetadata",
+      "pause",
+      "play",
+      "playing",
+      "stalled",
+      "suspend",
+      "waiting",
+    ] as const;
+    const listeners = eventNames.map((eventName) => {
+      const listener = () => updateStatus(eventName);
+      audio.addEventListener(eventName, listener);
+      return [eventName, listener] as const;
+    });
+
+    const interval = window.setInterval(() => updateStatus("tick"), 1000);
+    updateStatus("mounted");
+
+    return () => {
+      window.clearInterval(interval);
+      for (const [eventName, listener] of listeners) {
+        audio.removeEventListener(eventName, listener);
+      }
+    };
+  }, []);
 
   const value = useMemo(
     () => ({
       hasEntered,
+      attachVideoAudio,
+      detachVideoAudio,
       markEntered,
       pausePlaylistAudio,
       playPlaylistTrack,
+      playlistStatus,
+      setVideoAudioLevel,
     }),
-    [hasEntered, markEntered, pausePlaylistAudio, playPlaylistTrack],
+    [
+      attachVideoAudio,
+      detachVideoAudio,
+      hasEntered,
+      markEntered,
+      pausePlaylistAudio,
+      playPlaylistTrack,
+      playlistStatus,
+      setVideoAudioLevel,
+    ],
   );
 
   return (
     <EntryContext.Provider value={value}>
       {children}
       <audio
+        crossOrigin="anonymous"
         ref={playlistAudioRef}
         preload="metadata"
         onEnded={() => playlistEndedHandlerRef.current?.()}

@@ -258,10 +258,14 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
+    attachVideoAudio,
+    detachVideoAudio,
     hasEntered,
     markEntered,
     pausePlaylistAudio,
+    playlistStatus,
     playPlaylistTrack,
+    setVideoAudioLevel,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const debugHotspots =
@@ -372,7 +376,8 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
 
     if (video) {
       video.volume = videoVolume;
-      video.muted = !videoAudioActive;
+      video.muted = !hasEntered;
+      setVideoAudioLevel(videoVolume, !videoAudioActive);
       syncVideoTime();
 
       void video.play().catch((error: unknown) => {
@@ -385,7 +390,13 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         }
       });
     }
-  }, [syncVideoTime, videoAudioActive, videoVolume]);
+  }, [
+    hasEntered,
+    setVideoAudioLevel,
+    syncVideoTime,
+    videoAudioActive,
+    videoVolume,
+  ]);
 
   useEffect(() => {
     const handlePageShow = () => {
@@ -458,8 +469,8 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       return;
     }
 
-    video.volume = videoVolume;
-    video.muted = !videoAudioActive;
+    video.volume = 1;
+    setVideoAudioLevel(videoVolume, !videoAudioActive);
 
     void video.play().catch((error: unknown) => {
       if (isExpectedMediaInterruption(error)) {
@@ -470,7 +481,28 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         setAudioError(getMediaErrorMessage(error, "Audio blocked"));
       }
     });
-  }, [videoAudioActive, videoVolume, scene.video.src]);
+  }, [
+    scene.video.src,
+    setVideoAudioLevel,
+    videoAudioActive,
+    videoVolume,
+  ]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    if (!video || !hasEntered) {
+      return;
+    }
+
+    void attachVideoAudio(video, videoVolume).catch((error: unknown) => {
+      setAudioError(getMediaErrorMessage(error, "Video audio mixer blocked"));
+    });
+
+    return () => {
+      detachVideoAudio(video);
+    };
+  }, [attachVideoAudio, detachVideoAudio, hasEntered, scene.video.src, videoVolume]);
 
   useEffect(() => {
     if (!playlistEnabled || playlistTracks.length === 0) {
@@ -505,7 +537,8 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       return;
     }
 
-    void playPlaylistTrack({
+    const playCurrentTrack = () =>
+      playPlaylistTrack({
       src: activePlaylistTrack.src,
       startTime: playlistStartTime,
       volume: scene.playlist?.volume ?? 0.65,
@@ -515,13 +548,31 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         );
         setPlaylistStartTime(0);
       },
-    }).catch((error: unknown) => {
+    });
+
+    void playCurrentTrack().catch((error: unknown) => {
       if (isExpectedMediaInterruption(error)) {
         return;
       }
 
       setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
     });
+
+    const retryTimeouts = [350, 1200].map((delay) =>
+      window.setTimeout(() => {
+        void playCurrentTrack().catch((error: unknown) => {
+          if (isExpectedMediaInterruption(error)) {
+            return;
+          }
+
+          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
+        });
+      }, delay),
+    );
+
+    return () => {
+      retryTimeouts.forEach((timeout) => window.clearTimeout(timeout));
+    };
   }, [
     activePlaylistTrack,
     playPlaylistTrack,
@@ -548,17 +599,6 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     setVideoAudioMuted(false);
     setPlaylistAudioMuted(false);
 
-    if (video && videoAudioEnabled) {
-      video.volume = videoVolume;
-      video.muted = false;
-
-      if (syncedPlayback) {
-        video.currentTime = getSyncedTime();
-      }
-
-      playPromises.push(video.play());
-    }
-
     if (activePlaylistTrack) {
       playPromises.push(
         playPlaylistTrack({
@@ -573,6 +613,18 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
           },
         }),
       );
+    }
+
+    if (video && videoAudioEnabled) {
+      await attachVideoAudio(video, videoVolume);
+      video.muted = false;
+      setVideoAudioLevel(videoVolume, false);
+
+      if (syncedPlayback) {
+        video.currentTime = getSyncedTime();
+      }
+
+      playPromises.push(video.play());
     }
 
     const results = await Promise.allSettled(playPromises);
@@ -599,7 +651,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     setVideoAudioMuted(nextMuted);
 
     if (video) {
-      video.muted = nextMuted || !videoAudioEnabled;
+      setVideoAudioLevel(videoVolume, nextMuted || !videoAudioEnabled);
     }
   }
 
@@ -762,8 +814,9 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
               devOutline(devBorders, 3),
             )}
             src={scene.video.src}
+            crossOrigin="anonymous"
             autoPlay
-            muted
+            muted={!hasEntered}
             loop
             playsInline
             preload="metadata"
@@ -1039,7 +1092,21 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
                   {activePlaylistTrack.title}
                 </p>
               ) : null}
+              <p className="text-white/55">
+                Playlist state: {playlistStatus.lastEvent} /{" "}
+                {playlistStatus.paused ? "paused" : "playing"} / ready{" "}
+                {playlistStatus.readyState} / net {playlistStatus.networkState}
+              </p>
+              <p className="truncate text-white/45">
+                Playlist source:{" "}
+                {playlistStatus.currentSrc
+                  ? playlistStatus.currentSrc.split("/").at(-1)
+                  : "none"}
+              </p>
               {audioError ? <p className="text-red-300">{audioError}</p> : null}
+              {playlistStatus.error ? (
+                <p className="text-red-300">{playlistStatus.error}</p>
+              ) : null}
             </div>
 
             <div
