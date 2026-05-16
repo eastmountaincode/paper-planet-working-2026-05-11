@@ -29,6 +29,7 @@ const EntryContext = createContext<EntryContextValue | null>(null);
 export function EntryProvider({ children }: { children: ReactNode }) {
   const playlistAudioRef = useRef<HTMLAudioElement>(null);
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
+  const playlistRequestIdRef = useRef(0);
   const [hasEntered, setHasEntered] = useState(false);
 
   const markEntered = useCallback(() => {
@@ -47,40 +48,50 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const requestId = playlistRequestIdRef.current + 1;
+      playlistRequestIdRef.current = requestId;
       playlistEndedHandlerRef.current = onEnded ?? null;
       audio.volume = volume;
 
-      if (audio.currentSrc !== src && audio.getAttribute("src") !== src) {
+      const absoluteSrc = new URL(src, window.location.href).href;
+      const sourceChanged =
+        audio.currentSrc !== absoluteSrc && audio.getAttribute("src") !== src;
+
+      if (sourceChanged) {
         audio.src = src;
         audio.load();
       }
 
       const seekToStartTime = () => {
-        if (!Number.isFinite(startTime) || !Number.isFinite(audio.duration)) {
+        if (
+          playlistRequestIdRef.current !== requestId ||
+          !Number.isFinite(startTime) ||
+          !Number.isFinite(audio.duration)
+        ) {
           return;
         }
 
-        audio.currentTime = Math.min(
+        const nextTime = Math.min(
           startTime,
           Math.max(audio.duration - 0.25, 0),
         );
+
+        if (sourceChanged || Math.abs(audio.currentTime - nextTime) > 1.5) {
+          audio.currentTime = nextTime;
+        }
       };
 
       if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
         seekToStartTime();
       } else {
-        await new Promise<void>((resolve) => {
-          const handleMetadata = () => {
-            audio.removeEventListener("loadedmetadata", handleMetadata);
-            seekToStartTime();
-            resolve();
-          };
-
-          audio.addEventListener("loadedmetadata", handleMetadata);
+        audio.addEventListener("loadedmetadata", seekToStartTime, {
+          once: true,
         });
       }
 
-      await audio.play();
+      if (audio.paused || sourceChanged) {
+        await audio.play();
+      }
     },
     [],
   );
