@@ -176,7 +176,7 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
     <div
       ref={viewportRef}
       className={classNames(
-        "pointer-events-none absolute inset-x-0 bottom-1 z-20 overflow-hidden py-2 text-white sm:bottom-2 sm:py-3",
+        "pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-hidden py-1 text-white sm:py-2",
         devOutline(devBorders, 5),
       )}
       aria-label={ticker.text}
@@ -210,9 +210,13 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
 export function RoomExperience({ scene }: RoomExperienceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { hasEntered, markEntered } = useEntryState();
+  const {
+    hasEntered,
+    markEntered,
+    pausePlaylistAudio,
+    playPlaylistTrack,
+  } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const playlistAudioRef = useRef<HTMLAudioElement>(null);
   const debugHotspots =
     searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
   const [pointerPosition, setPointerPosition] =
@@ -477,62 +481,44 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   ]);
 
   useEffect(() => {
-    const audio = playlistAudioRef.current;
-
-    if (!audio || !playlistAudioActive || !activePlaylistTrack) {
+    if (!playlistAudioActive || !activePlaylistTrack) {
       return;
     }
 
-    audio.volume = scene.playlist?.volume ?? 0.65;
-
-    const startPlaylistAudio = () => {
-      if (Number.isFinite(playlistStartTime)) {
-        audio.currentTime = Math.min(
-          playlistStartTime,
-          Math.max(audio.duration - 0.25, 0),
-        );
-      }
-
-      void audio.play().catch((error: unknown) => {
+    void playPlaylistTrack({
+      src: activePlaylistTrack.src,
+      startTime: playlistStartTime,
+      volume: scene.playlist?.volume ?? 0.65,
+      onEnded: () => {
+        setPlaylistTrackIndex((current) => (current + 1) % playlistTracks.length);
+        setPlaylistStartTime(0);
+      },
+    }).catch((error: unknown) => {
         if (isExpectedMediaInterruption(error)) {
           return;
         }
 
         setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
-      });
-    };
-
-    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
-      startPlaylistAudio();
-    } else {
-      audio.addEventListener("loadedmetadata", startPlaylistAudio, {
-        once: true,
-      });
-    }
-
-    return () => {
-      audio.removeEventListener("loadedmetadata", startPlaylistAudio);
-    };
+    });
   }, [
     activePlaylistTrack,
+    playPlaylistTrack,
     playlistAudioActive,
     playlistStartTime,
+    playlistTracks.length,
     scene.playlist?.volume,
   ]);
 
   useEffect(() => {
-    const audio = playlistAudioRef.current;
-
-    if (!audio || playlistAudioActive) {
+    if (playlistAudioActive) {
       return;
     }
 
-    audio.pause();
-  }, [playlistAudioActive]);
+    pausePlaylistAudio();
+  }, [pausePlaylistAudio, playlistAudioActive]);
 
   async function enterPlanet() {
     const video = videoRef.current;
-    const playlistAudio = playlistAudioRef.current;
 
     setAudioError(null);
     markEntered();
@@ -551,9 +537,18 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
         await video.play();
       }
 
-      if (playlistAudio && activePlaylistTrack) {
-        playlistAudio.volume = scene.playlist?.volume ?? 0.65;
-        await playlistAudio.play();
+      if (activePlaylistTrack) {
+        await playPlaylistTrack({
+          src: activePlaylistTrack.src,
+          startTime: playlistStartTime,
+          volume: scene.playlist?.volume ?? 0.65,
+          onEnded: () => {
+            setPlaylistTrackIndex(
+              (current) => (current + 1) % playlistTracks.length,
+            );
+            setPlaylistStartTime(0);
+          },
+        });
       }
     } catch (error) {
       if (isExpectedMediaInterruption(error)) {
@@ -709,21 +704,6 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
             onLoadedData={markVideoReady}
             onCanPlay={markVideoReady}
           />
-
-          {activePlaylistTrack ? (
-            <audio
-              key={activePlaylistTrack.src}
-              ref={playlistAudioRef}
-              src={activePlaylistTrack.src}
-              preload="metadata"
-              onEnded={() => {
-                setPlaylistTrackIndex(
-                  (current) => (current + 1) % playlistTracks.length,
-                );
-                setPlaylistStartTime(0);
-              }}
-            />
-          ) : null}
 
           {scene.ticker ? (
             <SyncedTicker ticker={scene.ticker} devBorders={devBorders} />
