@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { MouseEvent } from "react";
 import {
@@ -99,6 +98,7 @@ type SyncedTickerProps = {
 
 const TICKER_GAP_PIXELS = 96;
 const ROOM_TRANSITION_MS = 200;
+const ROOT_HREF = "/";
 
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
@@ -748,27 +748,32 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     ],
   );
 
-  const switchScene = useCallback((targetScene: Scene, href: string, mode: "push" | "replace") => {
-    const position = getInitialPlaylistPosition(targetScene);
+  const getRootHistoryHref = useCallback(() => {
+    return window.location.search ? `/${window.location.search}` : ROOT_HREF;
+  }, []);
 
-    fadeOutInProgressRef.current = false;
-    setPointerPosition(null);
-    setActiveScene(targetScene);
-    setPlaylistTrackIndex(position.trackIndex);
-    setPlaylistStartTime(position.currentTime);
-    setVideoReady(false);
+  const switchScene = useCallback(
+    (targetScene: Scene, mode: "push" | "replace") => {
+      const position = getInitialPlaylistPosition(targetScene);
 
-    if (window.location.pathname !== href) {
+      fadeOutInProgressRef.current = false;
+      setPointerPosition(null);
+      setActiveScene(targetScene);
+      setPlaylistTrackIndex(position.trackIndex);
+      setPlaylistStartTime(position.currentTime);
+      setVideoReady(false);
+
       window.history[mode === "push" ? "pushState" : "replaceState"](
         { paperPlanetRoom: targetScene.slug },
         "",
-        href,
+        getRootHistoryHref(),
       );
-    }
-  }, []);
+    },
+    [getRootHistoryHref],
+  );
 
   const transitionToScene = useCallback(
-    async (targetScene: Scene, href: string, mode: "push" | "replace") => {
+    async (targetScene: Scene, mode: "push" | "replace") => {
       const navigationId = navigationIdRef.current + 1;
       navigationIdRef.current = navigationId;
       fadeOutInProgressRef.current = true;
@@ -798,7 +803,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             })
           : Promise.resolve();
 
-      switchScene(targetScene, href, mode);
+      switchScene(targetScene, mode);
       void playlistPromise;
     },
     [
@@ -814,9 +819,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     ],
   );
 
-  async function handleRoomNavigation(
+  function handleSceneNavigation(
     event: MouseEvent<HTMLAnchorElement>,
-    href: string,
+    targetSlug: SceneSlug,
   ) {
     if (
       event.defaultPrevented ||
@@ -824,45 +829,43 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       event.metaKey ||
       event.ctrlKey ||
       event.altKey ||
-      event.shiftKey ||
-      !href.startsWith("/rooms/")
+      event.shiftKey
     ) {
       return;
     }
 
-    if (href === `/rooms/${scene.slug}`) {
+    if (targetSlug === scene.slug) {
       event.preventDefault();
       return;
     }
 
     event.preventDefault();
 
-    const targetSlug = href.replace(/^\/rooms\//, "") as SceneSlug;
     const targetScene = scenes[targetSlug];
 
     if (targetScene) {
-      void transitionToScene(targetScene, href, "push");
-      return;
+      void transitionToScene(targetScene, "push");
     }
-
-    window.location.assign(href);
   }
 
   useEffect(() => {
-    const handleRoomPopState = () => {
-      const match = window.location.pathname.match(/^\/rooms\/([^/?#]+)/);
-      const targetSlug = match?.[1] as SceneSlug | undefined;
-      const targetScene = targetSlug ? scenes[targetSlug] : undefined;
+    window.history.replaceState(
+      { paperPlanetRoom: scene.slug },
+      "",
+      getRootHistoryHref(),
+    );
+  }, [getRootHistoryHref, scene.slug]);
+
+  useEffect(() => {
+    const handleRoomPopState = (event: PopStateEvent) => {
+      const targetSlug = event.state?.paperPlanetRoom as SceneSlug | undefined;
+      const targetScene = targetSlug ? scenes[targetSlug] : scenes.construction;
 
       if (!targetScene || targetScene.slug === scene.slug) {
         return;
       }
 
-      void transitionToScene(
-        targetScene,
-        `/rooms/${targetScene.slug}`,
-        "replace",
-      );
+      void transitionToScene(targetScene, "replace");
     };
 
     window.addEventListener("popstate", handleRoomPopState);
@@ -874,17 +877,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
   function getActionHref(action: Hotspot["action"]) {
     if (action.type === "navigate") {
-      return `/rooms/${action.target}`;
+      return ROOT_HREF;
     }
 
     const subject = action.subject
       ? `?subject=${encodeURIComponent(action.subject)}`
       : "";
     return `mailto:${action.email}${subject}`;
-  }
-
-  function getHotspotHref(hotspot: Hotspot) {
-    return getActionHref(hotspot.action);
   }
 
   function getPolygonPoints(hotspot: Hotspot) {
@@ -973,12 +972,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             preserveAspectRatio="none"
             aria-hidden={!debugHotspots}
           >
-            {orderedHotspots.map((hotspot) => (
+            {orderedHotspots.map((hotspot) => {
+              const action = hotspot.action;
+
+              return (
                 <a
                   key={hotspot.id}
-                  href={getHotspotHref(hotspot)}
-                  onClick={(event) =>
-                    handleRoomNavigation(event, getHotspotHref(hotspot))
+                  href={getActionHref(action)}
+                  onClick={
+                    action.type === "navigate"
+                      ? (event) =>
+                          handleSceneNavigation(event, action.target)
+                      : undefined
                   }
                   aria-label={hotspot.label}
                   className="pointer-events-auto outline-none"
@@ -1022,15 +1027,22 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                     </polygon>
                   )}
                 </a>
-              ))}
+              );
+            })}
           </svg>
 
-          {scene.overlays?.map((overlay) => (
-            <Link
+          {scene.overlays?.map((overlay) => {
+            const action = overlay.action;
+
+            return (
+            <a
               key={overlay.id}
-              href={getActionHref(overlay.action)}
-              onClick={(event) =>
-                handleRoomNavigation(event, getActionHref(overlay.action))
+              href={getActionHref(action)}
+              onClick={
+                action.type === "navigate"
+                  ? (event) =>
+                      handleSceneNavigation(event, action.target)
+                  : undefined
               }
               aria-label={overlay.label}
               title={debugHotspots ? overlay.label : undefined}
@@ -1053,8 +1065,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                 draggable={false}
               />
               <span className="sr-only">{overlay.label}</span>
-            </Link>
-          ))}
+            </a>
+            );
+          })}
         </div>
       </section>
 
@@ -1127,12 +1140,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
               )}
             >
               {sceneSlugs.map((slug, index) => (
-                <Link
+                <a
                   key={slug}
-                  href={`/rooms/${slug}`}
-                  onClick={(event) =>
-                    handleRoomNavigation(event, `/rooms/${slug}`)
-                  }
+                  href={ROOT_HREF}
+                  onClick={(event) => handleSceneNavigation(event, slug)}
                   aria-current={scene.slug === slug ? "page" : undefined}
                   className={classNames(
                     "truncate border border-white/20 px-2 py-1 text-center uppercase text-white/70 hover:border-white/70 hover:text-white aria-[current=page]:border-white aria-[current=page]:text-white",
@@ -1140,7 +1151,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                   )}
                 >
                   {scenes[slug].title}
-                </Link>
+                </a>
               ))}
             </div>
 

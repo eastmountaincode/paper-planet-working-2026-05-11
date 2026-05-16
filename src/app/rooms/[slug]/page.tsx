@@ -1,6 +1,5 @@
-import { notFound } from "next/navigation";
-import { RoomExperience } from "@/components/room-experience";
-import { getScene, sceneSlugs } from "@/lib/scenes";
+import { redirect } from "next/navigation";
+import { sceneSlugs } from "@/lib/scenes";
 
 type RoomPageProps = {
   params: Promise<{
@@ -13,21 +12,13 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: RoomPageProps) {
-  const { slug } = await params;
-  const scene = getScene(slug);
+  await params;
 
   return {
-    title: scene ? `${scene.title} | Paper Planet` : "Paper Planet",
+    title: "Paper Planet",
   };
 }
 
-export default async function RoomPage({ params }: RoomPageProps) {
-  const { slug } = await params;
-  const scene = getScene(slug);
-
-  if (!scene) {
-    notFound();
-  }
-
-  return <RoomExperience scene={scene} />;
+export default function RoomPage() {
+  redirect("/");
 }

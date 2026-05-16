@@ -36,7 +36,7 @@ export function EnterPlanet() {
       // Still enter the room; the in-room sound controls can retry playback.
     }
 
-    router.push("/rooms/construction");
+    router.push("/");
   }
 
   return (
