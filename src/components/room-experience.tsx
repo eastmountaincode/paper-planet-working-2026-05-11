@@ -1022,7 +1022,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
       <div
         className={classNames(
-          "fixed inset-0 z-30 bg-black transition-opacity duration-[60ms]",
+          "fixed inset-0 z-30 bg-black transition-opacity duration-200",
           transitionActive
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
