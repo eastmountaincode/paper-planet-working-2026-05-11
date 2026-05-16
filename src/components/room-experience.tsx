@@ -907,7 +907,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   return (
     <main
       className={classNames(
-        "relative min-h-dvh overflow-hidden bg-black text-white",
+        "relative h-dvh overflow-hidden overscroll-none bg-black text-white",
         devOutline(devBorders, 0),
       )}
     >
@@ -921,7 +921,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       ) : null}
       <section
         className={classNames(
-          "flex min-h-dvh items-center justify-center p-3 sm:p-5",
+          "flex h-dvh items-center justify-center overflow-hidden p-3 sm:p-5",
           devOutline(devBorders, 1),
         )}
       >
@@ -1110,7 +1110,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       {devPanelOpen ? (
         <aside
           className={classNames(
-            "fixed right-3 top-3 z-50 w-[min(15rem,calc(100vw-1.5rem))] border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",
+            "fixed right-3 top-3 z-50 max-h-[calc(100dvh-1.5rem)] w-[min(15rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",
             devOutline(devBorders, 5),
           )}
         >

@@ -314,7 +314,7 @@ function HotspotEditorSidebar({
   onMoveSelectedZIndex,
 }: HotspotEditorSidebarProps) {
   return (
-    <aside className="h-full overflow-y-auto bg-black p-4">
+    <aside className="min-h-0 overflow-y-auto overscroll-contain bg-black p-4">
       <div className="border-b border-white/15 pb-4">
         <h1 className="text-lg font-semibold">Hotspot Editor</h1>
         <p className="mt-2 text-sm leading-6 text-white/65">
@@ -910,9 +910,9 @@ export function HotspotEditor() {
   }
 
   return (
-    <main className="min-h-dvh bg-black text-white lg:h-dvh lg:overflow-hidden">
-      <div className="grid min-h-dvh w-full gap-px bg-neutral-800 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="flex min-w-0 flex-col gap-4 bg-black p-4 lg:h-dvh lg:overflow-y-auto">
+    <main className="h-dvh overflow-hidden bg-black text-white">
+      <div className="grid h-dvh w-full grid-rows-[minmax(0,1fr)_minmax(18rem,42dvh)] gap-px overflow-hidden bg-neutral-800 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-1">
+        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overscroll-contain bg-black p-4">
           <nav className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href={`/rooms/${sceneSlug}?hotspots=1`}
@@ -943,7 +943,7 @@ export function HotspotEditor() {
           </nav>
 
           <div
-            className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] overflow-hidden bg-black touch-none"
+            className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] touch-none overflow-hidden bg-black"
             style={{ aspectRatio }}
           >
             <video

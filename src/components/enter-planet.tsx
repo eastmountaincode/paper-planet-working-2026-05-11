@@ -40,7 +40,7 @@ export function EnterPlanet() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-black text-white">
+    <main className="flex h-dvh items-center justify-center overflow-hidden bg-black text-white">
       <button
         type="button"
         onClick={enter}
