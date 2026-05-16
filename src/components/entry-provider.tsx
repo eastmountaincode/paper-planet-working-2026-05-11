@@ -193,10 +193,12 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       setPlaylistAudioLevel(volume, false);
 
       const absoluteSrc = new URL(src, window.location.href).href;
-      const sourceChanged =
-        audio.currentSrc !== absoluteSrc && audio.getAttribute("src") !== src;
+      const currentOrPendingSrc =
+        audio.currentSrc || audio.getAttribute("src") || "";
+      const sourceChanged = currentOrPendingSrc !== absoluteSrc;
 
       if (sourceChanged) {
+        audio.pause();
         audio.src = absoluteSrc;
         audio.load();
       }
@@ -210,10 +212,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const nextTime = Math.min(
-          startTime,
-          Math.max(audio.duration - 0.25, 0),
-        );
+        const nextTime = Math.min(startTime, Math.max(audio.duration - 0.25, 0));
 
         if (sourceChanged || Math.abs(audio.currentTime - nextTime) > 1.5) {
           audio.currentTime = nextTime;
@@ -342,7 +341,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       <audio
         crossOrigin="anonymous"
         ref={playlistAudioRef}
-        preload="metadata"
+        preload="auto"
         onEnded={() => playlistEndedHandlerRef.current?.()}
       />
     </EntryContext.Provider>

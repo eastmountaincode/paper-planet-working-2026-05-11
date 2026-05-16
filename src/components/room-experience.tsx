@@ -402,32 +402,37 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     videoVolume,
   ]);
 
-  const resumeActivePlaylistAudio = useCallback(() => {
-    if (!playlistAudioActive || !activePlaylistTrack) {
-      return;
-    }
-
-    void resumePlaylistAudio(playlistVolume, false).catch((error: unknown) => {
-      if (isExpectedMediaInterruption(error)) {
+  const resumeActivePlaylistAudio = useCallback(
+    (label = "Playlist audio blocked") => {
+      if (!playlistAudioActive || !activePlaylistTrack) {
         return;
       }
 
-      setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
-    });
-  }, [
-    activePlaylistTrack,
-    playlistAudioActive,
-    playlistVolume,
-    resumePlaylistAudio,
-  ]);
+      void resumePlaylistAudio(playlistVolume, false).catch((error: unknown) => {
+        if (isExpectedMediaInterruption(error)) {
+          return;
+        }
+
+        setAudioError(getMediaErrorMessage(error, label));
+      });
+    },
+    [
+      activePlaylistTrack,
+      playlistAudioActive,
+      playlistVolume,
+      resumePlaylistAudio,
+    ],
+  );
 
   useEffect(() => {
     const handlePageShow = () => {
       window.setTimeout(resumeRoomMedia, 0);
+      window.setTimeout(() => resumeActivePlaylistAudio(), 0);
     };
 
     const handlePopState = () => {
       window.setTimeout(resumeRoomMedia, 0);
+      window.setTimeout(() => resumeActivePlaylistAudio(), 0);
     };
 
     window.addEventListener("pageshow", handlePageShow);
@@ -437,7 +442,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       window.removeEventListener("pageshow", handlePageShow);
       window.removeEventListener("popstate", handlePopState);
     };
-  }, [resumeRoomMedia]);
+  }, [resumeActivePlaylistAudio, resumeRoomMedia]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -470,6 +475,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       if (!document.hidden) {
         syncVideoTime();
         resumeRoomMedia();
+        resumeActivePlaylistAudio();
       }
     };
 
@@ -483,7 +489,12 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       window.removeEventListener("focus", syncVideoTime);
       window.clearInterval(interval);
     };
-  }, [resumeRoomMedia, syncVideoTime, syncedPlayback]);
+  }, [
+    resumeActivePlaylistAudio,
+    resumeRoomMedia,
+    syncVideoTime,
+    syncedPlayback,
+  ]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -581,21 +592,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
     });
 
-    const retryTimeouts = [350, 1200].map((delay) =>
-      window.setTimeout(() => {
-        void playCurrentTrack().catch((error: unknown) => {
-          if (isExpectedMediaInterruption(error)) {
-            return;
-          }
-
-          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
-        });
-      }, delay),
-    );
-
-    return () => {
-      retryTimeouts.forEach((timeout) => window.clearTimeout(timeout));
-    };
+    return undefined;
   }, [
     activePlaylistTrack,
     playPlaylistTrack,
@@ -608,18 +605,6 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
   useEffect(() => {
     setPlaylistAudioLevel(playlistVolume, !playlistAudioActive);
   }, [playlistAudioActive, playlistVolume, setPlaylistAudioLevel]);
-
-  useEffect(() => {
-    if (!playlistAudioActive || !activePlaylistTrack) {
-      return;
-    }
-
-    const interval = window.setInterval(resumeActivePlaylistAudio, 1000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [activePlaylistTrack, playlistAudioActive, resumeActivePlaylistAudio]);
 
   async function enterPlanet() {
     const video = videoRef.current;
