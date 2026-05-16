@@ -29,5 +29,5 @@ export default async function RoomPage({ params }: RoomPageProps) {
     notFound();
   }
 
-  return <RoomExperience key={scene.slug} scene={scene} />;
+  return <RoomExperience scene={scene} />;
 }

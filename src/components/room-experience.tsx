@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import type { MouseEvent } from "react";
 import {
   useCallback,
@@ -275,8 +275,8 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
   );
 }
 
-export function RoomExperience({ scene }: RoomExperienceProps) {
-  const router = useRouter();
+export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
+  const [scene, setActiveScene] = useState(initialScene);
   const searchParams = useSearchParams();
   const {
     attachVideoAudio,
@@ -357,6 +357,7 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
 
   function markVideoReady() {
     setVideoReady(true);
+    setIsExiting(false);
     setShowTransitionLabel(false);
   }
 
@@ -748,6 +749,24 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
     });
   }
 
+  function switchScene(targetScene: Scene, href: string, mode: "push" | "replace") {
+    const position = getInitialPlaylistPosition(targetScene);
+
+    setPointerPosition(null);
+    setActiveScene(targetScene);
+    setPlaylistTrackIndex(position.trackIndex);
+    setPlaylistStartTime(position.currentTime);
+    setVideoReady(false);
+
+    if (window.location.pathname !== href) {
+      window.history[mode === "push" ? "pushState" : "replaceState"](
+        { paperPlanetRoom: targetScene.slug },
+        "",
+        href,
+      );
+    }
+  }
+
   async function handleRoomNavigation(
     event: MouseEvent<HTMLAnchorElement>,
     href: string,
@@ -788,10 +807,46 @@ export function RoomExperience({ scene }: RoomExperienceProps) {
       }
     }
 
-    window.setTimeout(() => {
-      router.push(href);
-    }, 45);
+    if (targetScene) {
+      switchScene(targetScene, href, "push");
+      return;
+    }
+
+    window.location.assign(href);
   }
+
+  useEffect(() => {
+    const handleRoomPopState = () => {
+      const match = window.location.pathname.match(/^\/rooms\/([^/?#]+)/);
+      const targetSlug = match?.[1] as Scene["slug"] | undefined;
+      const targetScene = targetSlug ? scenes[targetSlug] : undefined;
+
+      if (!targetScene || targetScene.slug === scene.slug) {
+        return;
+      }
+
+      setAudioError(null);
+      setIsExiting(true);
+      setShowTransitionLabel(false);
+      switchScene(targetScene, `/rooms/${targetScene.slug}`, "replace");
+
+      if (hasEntered && !playlistAudioMuted) {
+        void playPlaylistForScene(targetScene).catch((error: unknown) => {
+          if (isExpectedMediaInterruption(error)) {
+            return;
+          }
+
+          setAudioError(getMediaErrorMessage(error, "Playlist audio blocked"));
+        });
+      }
+    };
+
+    window.addEventListener("popstate", handleRoomPopState);
+
+    return () => {
+      window.removeEventListener("popstate", handleRoomPopState);
+    };
+  });
 
   function getActionHref(action: Hotspot["action"]) {
     if (action.type === "navigate") {
