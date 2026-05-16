@@ -420,7 +420,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
-        event.key.toLowerCase() !== "b" ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -429,7 +428,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      setDevBorders((current) => !current);
+      const key = event.key.toLowerCase();
+
+      if (key === "b") {
+        setDevBorders((current) => !current);
+      }
+
+      if (key === "h") {
+        setDevPanelOpen((current) => !current);
+      }
     };
 
     document.addEventListener("keydown", handleKeyDown, true);
@@ -1046,7 +1053,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             }}
             onClick={enterPlanet}
             className={classNames(
-              "border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black",
+              "cursor-pointer border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black",
               devOutline(devBorders, 5),
             )}
           >
@@ -1055,12 +1062,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         </div>
       ) : null}
 
-      <aside
-        className={classNames(
-          "fixed right-3 top-3 z-50 w-[min(15rem,calc(100vw-1.5rem))] border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",
-          devOutline(devBorders, 5),
-        )}
-      >
+      {devPanelOpen ? (
+        <aside
+          className={classNames(
+            "fixed right-3 top-3 z-50 w-[min(15rem,calc(100vw-1.5rem))] border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",
+            devOutline(devBorders, 5),
+          )}
+        >
         <button
           type="button"
           onClick={() => setDevPanelOpen((current) => !current)}
@@ -1074,7 +1082,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           <span aria-hidden="true">{devPanelOpen ? "−" : "+"}</span>
         </button>
 
-        {devPanelOpen ? (
           <div
             className={classNames(
               "grid gap-2 border-t border-white/15 p-2",
@@ -1223,8 +1230,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
               </p>
             </div>
           </div>
-        ) : null}
-      </aside>
+        </aside>
+      ) : null}
     </main>
   );
 }
