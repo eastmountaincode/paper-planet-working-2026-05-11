@@ -28,6 +28,24 @@ type PointerPosition = {
   y: number;
 };
 
+type StageTransform = {
+  scale: number;
+  x: number;
+  y: number;
+};
+
+type StagePointer = {
+  x: number;
+  y: number;
+};
+
+type StageGesture = {
+  pointers: Map<number, StagePointer>;
+  startCenter: StagePointer | null;
+  startDistance: number;
+  startTransform: StageTransform;
+};
+
 const devOutlineClasses = [
   "outline-cyan-400/80",
   "outline-fuchsia-400/80",
@@ -99,11 +117,48 @@ type SyncedTickerProps = {
 const TICKER_GAP_PIXELS = 96;
 const ROOM_TRANSITION_MS = 200;
 const ROOT_HREF = "/";
+const DEFAULT_STAGE_TRANSFORM: StageTransform = { scale: 1, x: 0, y: 0 };
+const MAX_STAGE_SCALE = 3;
 
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, milliseconds);
   });
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getPointerDistance(first: StagePointer, second: StagePointer) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function getPointerCenter(first: StagePointer, second: StagePointer) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function clampStageTransform(
+  transform: StageTransform,
+  rect: DOMRect | null,
+): StageTransform {
+  const scale = clamp(transform.scale, 1, MAX_STAGE_SCALE);
+
+  if (!rect || scale <= 1.001) {
+    return DEFAULT_STAGE_TRANSFORM;
+  }
+
+  const maxX = (rect.width * (scale - 1)) / 2;
+  const maxY = (rect.height * (scale - 1)) / 2;
+
+  return {
+    scale,
+    x: clamp(transform.x, -maxX, maxX),
+    y: clamp(transform.y, -maxY, maxY),
+  };
 }
 
 function TickerText({ text }: { text: string }) {
@@ -235,6 +290,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     videoGain,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const debugHotspots =
     searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
   const [pointerPosition, setPointerPosition] =
@@ -257,6 +313,16 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
+  const [stageTransform, setStageTransform] = useState<StageTransform>(
+    DEFAULT_STAGE_TRANSFORM,
+  );
+  const stageTransformRef = useRef(DEFAULT_STAGE_TRANSFORM);
+  const stageGestureRef = useRef<StageGesture>({
+    pointers: new Map(),
+    startCenter: null,
+    startDistance: 0,
+    startTransform: DEFAULT_STAGE_TRANSFORM,
+  });
 
   const aspectRatio = useMemo(
     () => `${scene.video.width} / ${scene.video.height}`,
@@ -287,6 +353,16 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [scene.hotspots],
   );
   const transitionActive = isExiting || !videoReady;
+  const stageTransformStyle = useMemo(
+    () => ({
+      transform: `translate3d(${stageTransform.x}px, ${stageTransform.y}px, 0) scale(${stageTransform.scale})`,
+    }),
+    [stageTransform.scale, stageTransform.x, stageTransform.y],
+  );
+
+  useEffect(() => {
+    stageTransformRef.current = stageTransform;
+  }, [stageTransform]);
 
   function markVideoReady() {
     if (fadeOutInProgressRef.current) {
@@ -758,6 +834,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
       fadeOutInProgressRef.current = false;
       setPointerPosition(null);
+      stageGestureRef.current.pointers.clear();
+      stageGestureRef.current.startCenter = null;
+      stageGestureRef.current.startDistance = 0;
+      stageGestureRef.current.startTransform = DEFAULT_STAGE_TRANSFORM;
+      setStageTransform(DEFAULT_STAGE_TRANSFORM);
       setActiveScene(targetScene);
       setPlaylistTrackIndex(position.trackIndex);
       setPlaylistStartTime(position.currentTime);
@@ -904,6 +985,135 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     });
   }
 
+  function setClampedStageTransform(nextTransform: StageTransform) {
+    const clampedTransform = clampStageTransform(
+      nextTransform,
+      stageRef.current?.getBoundingClientRect() ?? null,
+    );
+
+    stageTransformRef.current = clampedTransform;
+    setStageTransform(clampedTransform);
+  }
+
+  function getStagePointer(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    return {
+      x: event.clientX - rect.left - rect.width / 2,
+      y: event.clientY - rect.top - rect.height / 2,
+    };
+  }
+
+  function resetStageGesture() {
+    stageGestureRef.current.pointers.clear();
+    stageGestureRef.current.startCenter = null;
+    stageGestureRef.current.startDistance = 0;
+    stageGestureRef.current.startTransform = stageTransformRef.current;
+  }
+
+  function handleStagePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    handleFramePointer(event);
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    const gesture = stageGestureRef.current;
+    const pointer = getStagePointer(event);
+    gesture.pointers.set(event.pointerId, pointer);
+
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    const pointers = Array.from(gesture.pointers.values());
+    gesture.startTransform = stageTransformRef.current;
+
+    if (pointers.length >= 2) {
+      gesture.startCenter = getPointerCenter(pointers[0], pointers[1]);
+      gesture.startDistance = getPointerDistance(pointers[0], pointers[1]);
+      return;
+    }
+
+    gesture.startCenter = pointer;
+    gesture.startDistance = 0;
+  }
+
+  function handleStagePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = stageGestureRef.current;
+
+    if (!gesture.pointers.has(event.pointerId)) {
+      return;
+    }
+
+    gesture.pointers.set(event.pointerId, getStagePointer(event));
+    const pointers = Array.from(gesture.pointers.values());
+
+    if (pointers.length >= 2 && gesture.startCenter) {
+      const currentCenter = getPointerCenter(pointers[0], pointers[1]);
+      const currentDistance = getPointerDistance(pointers[0], pointers[1]);
+      const distanceRatio =
+        gesture.startDistance > 0
+          ? currentDistance / gesture.startDistance
+          : 1;
+      const nextScale = gesture.startTransform.scale * distanceRatio;
+
+      event.preventDefault();
+      setClampedStageTransform({
+        scale: nextScale,
+        x: gesture.startTransform.x + currentCenter.x - gesture.startCenter.x,
+        y: gesture.startTransform.y + currentCenter.y - gesture.startCenter.y,
+      });
+      return;
+    }
+
+    if (
+      pointers.length === 1 &&
+      gesture.startCenter &&
+      gesture.startTransform.scale > 1
+    ) {
+      const currentPointer = pointers[0];
+
+      event.preventDefault();
+      setClampedStageTransform({
+        scale: gesture.startTransform.scale,
+        x: gesture.startTransform.x + currentPointer.x - gesture.startCenter.x,
+        y: gesture.startTransform.y + currentPointer.y - gesture.startCenter.y,
+      });
+    }
+  }
+
+  function handleStagePointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    const gesture = stageGestureRef.current;
+    gesture.pointers.delete(event.pointerId);
+
+    if (event.currentTarget.releasePointerCapture) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // The pointer may already be released after a browser-level cancel.
+      }
+    }
+
+    const pointers = Array.from(gesture.pointers.values());
+
+    if (pointers.length >= 2) {
+      gesture.startTransform = stageTransformRef.current;
+      gesture.startCenter = getPointerCenter(pointers[0], pointers[1]);
+      gesture.startDistance = getPointerDistance(pointers[0], pointers[1]);
+      return;
+    }
+
+    if (pointers.length === 1) {
+      gesture.startTransform = stageTransformRef.current;
+      gesture.startCenter = pointers[0];
+      gesture.startDistance = 0;
+      return;
+    }
+
+    resetStageGesture();
+  }
+
   return (
     <main
       className={classNames(
@@ -921,63 +1131,133 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       ) : null}
       <section
         className={classNames(
-          "flex h-dvh items-center justify-center overflow-hidden p-3 sm:p-5",
+          "flex h-dvh touch-none items-center justify-center overflow-hidden p-3 sm:p-5",
           devOutline(devBorders, 1),
         )}
       >
         <div
+          ref={stageRef}
           className={classNames(
-            "relative w-full max-w-[min(100%,calc(100dvh-2.5rem))] overflow-hidden bg-black",
+            "relative w-full max-w-[min(100%,calc(100dvh-2.5rem))] touch-none overflow-hidden bg-black",
             devOutline(devBorders, 2),
           )}
           style={{ aspectRatio }}
-          onPointerDown={handleFramePointer}
+          onPointerDown={handleStagePointerDown}
+          onPointerMove={handleStagePointerMove}
+          onPointerUp={handleStagePointerEnd}
+          onPointerCancel={handleStagePointerEnd}
         >
-          <video
-            key={scene.video.src}
-            ref={videoRef}
+          <div
             className={classNames(
-              "absolute inset-0 z-0 h-full w-full object-cover",
+              "absolute inset-0 origin-center will-change-transform",
               devOutline(devBorders, 3),
             )}
-            src={scene.video.src}
-            crossOrigin="anonymous"
-            autoPlay
-            muted={!hasEntered}
-            loop
-            playsInline
-            preload="metadata"
-            aria-label={`${scene.title} room video`}
-            onLoadedMetadata={(event) => {
-              event.currentTarget.volume = videoVolume;
-
-              if (syncedPlayback) {
-                event.currentTarget.currentTime = getSyncedTime();
-              }
-            }}
-            onLoadedData={markVideoReady}
-            onCanPlay={markVideoReady}
-          />
-
-          {scene.ticker ? (
-            <SyncedTicker ticker={scene.ticker} devBorders={devBorders} />
-          ) : null}
-
-          <svg
-            className={classNames(
-              "pointer-events-none absolute inset-0 z-10 h-full w-full",
-              devOutline(devBorders, 4),
-            )}
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            aria-hidden={!debugHotspots}
+            style={stageTransformStyle}
           >
-            {orderedHotspots.map((hotspot) => {
-              const action = hotspot.action;
+            <video
+              key={scene.video.src}
+              ref={videoRef}
+              className={classNames(
+                "absolute inset-0 z-0 h-full w-full object-cover",
+                devOutline(devBorders, 4),
+              )}
+              src={scene.video.src}
+              crossOrigin="anonymous"
+              autoPlay
+              muted={!hasEntered}
+              loop
+              playsInline
+              preload="metadata"
+              aria-label={`${scene.title} room video`}
+              onLoadedMetadata={(event) => {
+                event.currentTarget.volume = videoVolume;
+
+                if (syncedPlayback) {
+                  event.currentTarget.currentTime = getSyncedTime();
+                }
+              }}
+              onLoadedData={markVideoReady}
+              onCanPlay={markVideoReady}
+            />
+
+            {scene.ticker ? (
+              <SyncedTicker ticker={scene.ticker} devBorders={devBorders} />
+            ) : null}
+
+            <svg
+              className={classNames(
+                "pointer-events-none absolute inset-0 z-10 h-full w-full",
+                devOutline(devBorders, 5),
+              )}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden={!debugHotspots}
+            >
+              {orderedHotspots.map((hotspot) => {
+                const action = hotspot.action;
+
+                return (
+                  <a
+                    key={hotspot.id}
+                    href={getActionHref(action)}
+                    onClick={
+                      action.type === "navigate"
+                        ? (event) =>
+                            handleSceneNavigation(event, action.target)
+                        : undefined
+                    }
+                    aria-label={hotspot.label}
+                    className="pointer-events-auto outline-none"
+                  >
+                    {hotspot.shape === "rect" ? (
+                      <rect
+                        x={hotspot.rect.x}
+                        y={hotspot.rect.y}
+                        width={hotspot.rect.width}
+                        height={hotspot.rect.height}
+                        fill={
+                          debugHotspots
+                            ? "rgba(253, 224, 71, 0.22)"
+                            : "transparent"
+                        }
+                        stroke={
+                          debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
+                        }
+                        strokeWidth={debugHotspots ? 0.3 : 0}
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="all"
+                      >
+                        <title>{hotspot.label}</title>
+                      </rect>
+                    ) : (
+                      <polygon
+                        points={getPolygonPoints(hotspot)}
+                        fill={
+                          debugHotspots
+                            ? "rgba(253, 224, 71, 0.22)"
+                            : "transparent"
+                        }
+                        stroke={
+                          debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
+                        }
+                        strokeWidth={debugHotspots ? 0.3 : 0}
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="all"
+                      >
+                        <title>{hotspot.label}</title>
+                      </polygon>
+                    )}
+                  </a>
+                );
+              })}
+            </svg>
+
+            {scene.overlays?.map((overlay) => {
+              const action = overlay.action;
 
               return (
                 <a
-                  key={hotspot.id}
+                  key={overlay.id}
                   href={getActionHref(action)}
                   onClick={
                     action.type === "navigate"
@@ -985,89 +1265,31 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                           handleSceneNavigation(event, action.target)
                       : undefined
                   }
-                  aria-label={hotspot.label}
-                  className="pointer-events-auto outline-none"
-                >
-                  {hotspot.shape === "rect" ? (
-                    <rect
-                      x={hotspot.rect.x}
-                      y={hotspot.rect.y}
-                      width={hotspot.rect.width}
-                      height={hotspot.rect.height}
-                      fill={
-                        debugHotspots
-                          ? "rgba(253, 224, 71, 0.22)"
-                          : "transparent"
-                      }
-                      stroke={
-                        debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
-                      }
-                      strokeWidth={debugHotspots ? 0.3 : 0}
-                      vectorEffect="non-scaling-stroke"
-                      pointerEvents="all"
-                    >
-                      <title>{hotspot.label}</title>
-                    </rect>
-                  ) : (
-                    <polygon
-                      points={getPolygonPoints(hotspot)}
-                      fill={
-                        debugHotspots
-                          ? "rgba(253, 224, 71, 0.22)"
-                          : "transparent"
-                      }
-                      stroke={
-                        debugHotspots ? "rgba(253, 224, 71, 0.95)" : "none"
-                      }
-                      strokeWidth={debugHotspots ? 0.3 : 0}
-                      vectorEffect="non-scaling-stroke"
-                      pointerEvents="all"
-                    >
-                      <title>{hotspot.label}</title>
-                    </polygon>
+                  aria-label={overlay.label}
+                  title={debugHotspots ? overlay.label : undefined}
+                  className={classNames(
+                    "absolute z-30 block outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black",
+                    devOutline(devBorders, overlay.zIndex ?? 6),
                   )}
+                  style={{
+                    left: `${overlay.position.x}%`,
+                    top: `${overlay.position.y}%`,
+                    width: `${overlay.position.width}%`,
+                  }}
+                >
+                  {/* Use a plain img for local hand-drawn UI sprites; Next image optimization can be brittle in dev previews. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={overlay.src}
+                    alt=""
+                    className="block h-auto w-full select-none"
+                    draggable={false}
+                  />
+                  <span className="sr-only">{overlay.label}</span>
                 </a>
               );
             })}
-          </svg>
-
-          {scene.overlays?.map((overlay) => {
-            const action = overlay.action;
-
-            return (
-            <a
-              key={overlay.id}
-              href={getActionHref(action)}
-              onClick={
-                action.type === "navigate"
-                  ? (event) =>
-                      handleSceneNavigation(event, action.target)
-                  : undefined
-              }
-              aria-label={overlay.label}
-              title={debugHotspots ? overlay.label : undefined}
-              className={classNames(
-                "absolute z-30 block outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black",
-                devOutline(devBorders, overlay.zIndex ?? 6),
-              )}
-              style={{
-                left: `${overlay.position.x}%`,
-                top: `${overlay.position.y}%`,
-                width: `${overlay.position.width}%`,
-              }}
-            >
-              {/* Use a plain img for local hand-drawn UI sprites; Next image optimization can be brittle in dev previews. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={overlay.src}
-                alt=""
-                className="block h-auto w-full select-none"
-                draggable={false}
-              />
-              <span className="sr-only">{overlay.label}</span>
-            </a>
-            );
-          })}
+          </div>
         </div>
       </section>
 
@@ -1085,7 +1307,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       {!hasEntered ? (
         <div
           className={classNames(
-            "fixed inset-0 z-50 flex items-center justify-center bg-black text-white",
+            "fixed inset-0 z-50 flex touch-none items-center justify-center bg-black text-white",
             devOutline(devBorders, 4),
           )}
         >
