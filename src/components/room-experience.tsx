@@ -295,7 +295,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
   const [pointerPosition, setPointerPosition] =
     useState<PointerPosition | null>(null);
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const [devPanelOpen, setDevPanelOpen] = useState(true);
   const [devBorders, setDevBorders] = useState(
     searchParams.get("dev") === "1",
   );
