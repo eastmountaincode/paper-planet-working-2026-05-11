@@ -221,11 +221,17 @@ function parseStoredHiddenIds(value: string | null) {
 function loadHotspotsByScene() {
   const hotspotsByScene = emptyHotspotsByScene();
 
-  if (typeof window === "undefined") {
-    for (const slug of sceneSlugs) {
-      hotspotsByScene[slug] = scenes[slug].hotspots;
-    }
+  for (const slug of sceneSlugs) {
+    hotspotsByScene[slug] = scenes[slug].hotspots;
+  }
 
+  return hotspotsByScene;
+}
+
+function loadStoredHotspotsByScene() {
+  const hotspotsByScene = loadHotspotsByScene();
+
+  if (typeof window === "undefined") {
     return hotspotsByScene;
   }
 
@@ -253,6 +259,10 @@ function loadHotspotsByScene() {
 }
 
 function loadHiddenIdsByScene() {
+  return emptyHiddenIdsByScene();
+}
+
+function loadStoredHiddenIdsByScene() {
   const hiddenIdsByScene = emptyHiddenIdsByScene();
 
   if (typeof window === "undefined") {
@@ -577,6 +587,7 @@ export function HotspotEditor() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [storageReady, setStorageReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const isDrawingRef = useRef(false);
 
@@ -599,18 +610,38 @@ export function HotspotEditor() {
   );
 
   useEffect(() => {
+    const loadStorageTimeout = window.setTimeout(() => {
+      setHotspotsByScene(loadStoredHotspotsByScene());
+      setHiddenIdsByScene(loadStoredHiddenIdsByScene());
+      setStorageReady(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(loadStorageTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) {
+      return;
+    }
+
     window.localStorage.setItem(
       editorStorageKey(sceneSlug),
       JSON.stringify(hotspots),
     );
-  }, [hotspots, sceneSlug]);
+  }, [hotspots, sceneSlug, storageReady]);
 
   useEffect(() => {
+    if (!storageReady) {
+      return;
+    }
+
     window.localStorage.setItem(
       hiddenStorageKey(sceneSlug),
       JSON.stringify(hiddenIds),
     );
-  }, [hiddenIds, sceneSlug]);
+  }, [hiddenIds, sceneSlug, storageReady]);
 
   function setSceneHotspots(
     updater: Hotspot[] | ((currentHotspots: Hotspot[]) => Hotspot[]),

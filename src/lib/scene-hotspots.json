@@ -2,8 +2,7 @@
   "construction": [
     {
       "id": "construction-hotspot-mp7ctoda-1",
-      "label": "building goes to hq",
-      "zIndex": 0,
+      "label": "go to hq",
       "shape": "polygon",
       "points": [
         {
@@ -1276,7 +1275,7 @@
   "hq": [
     {
       "id": "contact-char",
-      "label": "let's you and I have a conversation",
+      "label": "let's you and I have a talk",
       "zIndex": 1,
       "shape": "polygon",
       "points": [

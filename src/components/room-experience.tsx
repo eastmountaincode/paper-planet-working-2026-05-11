@@ -11,13 +11,17 @@ import {
 } from "react";
 import { useEntryState } from "@/components/entry-provider";
 import type { Hotspot, Scene, SceneSlug, SceneTicker } from "@/lib/scenes";
-import { sceneSlugs, scenes } from "@/lib/scenes";
+import { createScenes, sceneSlugs, scenes as staticScenes } from "@/lib/scenes";
 import {
   getInitialPlaylistPosition,
   getScenePlaylistPlayback,
   getSyncedPlaylistPositionForTracks,
   type SyncedPlaylistPosition,
 } from "@/lib/playlist-sync";
+import {
+  normalizePlaylistManifest,
+  playlistManifestToScenePlaylists,
+} from "@/lib/playlist-manifest";
 
 type RoomExperienceProps = {
   scene: Scene;
@@ -81,6 +85,16 @@ function isTypingTarget(target: EventTarget | null) {
     target.tagName === "SELECT" ||
     target.isContentEditable
   );
+}
+
+function isInteractiveTarget(target: EventTarget | null) {
+  return target instanceof Element
+    ? Boolean(
+        target.closest(
+          "a, button, input, select, textarea, [role='button'], [data-stage-interactive='true']",
+        ),
+      )
+    : false;
 }
 
 function getHotspotZIndex(hotspot: Hotspot) {
@@ -271,6 +285,7 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
 }
 
 export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
+  const [runtimeScenes, setRuntimeScenes] = useState(staticScenes);
   const [scene, setActiveScene] = useState(initialScene);
   const searchParams = useSearchParams();
   const {
@@ -291,6 +306,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const sceneSlugRef = useRef(initialScene.slug);
   const debugHotspots =
     searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
   const [pointerPosition, setPointerPosition] =
@@ -363,6 +379,41 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     stageTransformRef.current = stageTransform;
   }, [stageTransform]);
+
+  useEffect(() => {
+    sceneSlugRef.current = scene.slug;
+  }, [scene.slug]);
+
+  useEffect(() => {
+    let isCanceled = false;
+
+    async function loadRuntimePlaylists() {
+      const response = await fetch("/api/playlists", { cache: "no-store" });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const result = (await response.json()) as { manifest?: unknown };
+      const manifest = normalizePlaylistManifest(result.manifest);
+      const nextScenes = createScenes(playlistManifestToScenePlaylists(manifest));
+      const nextScene = nextScenes[sceneSlugRef.current] ?? nextScenes.construction;
+      const nextPosition = getInitialPlaylistPosition(nextScene);
+
+      if (!isCanceled) {
+        setRuntimeScenes(nextScenes);
+        setActiveScene(nextScene);
+        setPlaylistTrackIndex(nextPosition.trackIndex);
+        setPlaylistStartTime(nextPosition.currentTime);
+      }
+    }
+
+    void loadRuntimePlaylists();
+
+    return () => {
+      isCanceled = true;
+    };
+  }, []);
 
   function markVideoReady() {
     if (fadeOutInProgressRef.current) {
@@ -688,7 +739,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setPlaylistAudioMuted(false);
 
     const roomPlaylistOptions = sceneSlugs.flatMap((slug) => {
-      const targetScene = scenes[slug];
+      const targetScene = runtimeScenes[slug];
       const playback = getScenePlaylistPlayback(targetScene);
 
       if (!playback) {
@@ -922,7 +973,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     event.preventDefault();
 
-    const targetScene = scenes[targetSlug];
+    const targetScene = runtimeScenes[targetSlug];
 
     if (targetScene) {
       void transitionToScene(targetScene, "push");
@@ -940,7 +991,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     const handleRoomPopState = (event: PopStateEvent) => {
       const targetSlug = event.state?.paperPlanetRoom as SceneSlug | undefined;
-      const targetScene = targetSlug ? scenes[targetSlug] : scenes.construction;
+      const targetScene = targetSlug
+        ? runtimeScenes[targetSlug]
+        : runtimeScenes.construction;
 
       if (!targetScene || targetScene.slug === scene.slug) {
         return;
@@ -954,7 +1007,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       window.removeEventListener("popstate", handleRoomPopState);
     };
-  }, [scene.slug, transitionToScene]);
+  }, [runtimeScenes, scene.slug, transitionToScene]);
 
   function getActionHref(action: Hotspot["action"]) {
     if (action.type === "navigate") {
@@ -1013,6 +1066,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
   function handleStagePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     handleFramePointer(event);
+
+    if (isInteractiveTarget(event.target)) {
+      return;
+    }
 
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
@@ -1161,8 +1218,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                 "absolute inset-0 z-0 h-full w-full object-cover",
                 devOutline(devBorders, 4),
               )}
-              src={scene.video.src}
               crossOrigin="anonymous"
+              src={scene.video.src}
               autoPlay
               muted={!hasEntered}
               loop
@@ -1372,7 +1429,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                     devOutline(devBorders, 3 + index),
                   )}
                 >
-                  {scenes[slug].title}
+                  {runtimeScenes[slug].title}
                 </a>
               ))}
             </div>

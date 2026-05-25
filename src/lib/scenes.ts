@@ -100,7 +100,7 @@ export type Scene = {
   ticker?: SceneTicker;
 };
 
-type ScenePlaylistTrackData = {
+export type ScenePlaylistTrackData = {
   title: string;
   album?: string;
   sourceFile: string;
@@ -109,7 +109,7 @@ type ScenePlaylistTrackData = {
   durationSeconds: number;
 };
 
-type ScenePlaylistData = {
+export type ScenePlaylistData = {
   name: string;
   folder: string;
   playbackMode?: "ordered" | "deterministic-random";
@@ -119,107 +119,118 @@ type ScenePlaylistData = {
 };
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
+const roomVideoVersion = "20260525-cors";
 
 const mediaUrl = (path: string) =>
   `${mediaBaseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 
+const roomVideoUrl = (path: string) => mediaUrl(`${path}?v=${roomVideoVersion}`);
+
 const sceneHotspots = sceneHotspotsData as Record<SceneSlug, Hotspot[]>;
 const scenePlaylists = scenePlaylistsData as Record<SceneSlug, ScenePlaylistData>;
 
-function getPlaylistTracks(slug: SceneSlug) {
-  return scenePlaylists[slug].tracks.map((track) => ({
+function getPlaylistTracks(
+  playlists: Record<SceneSlug, ScenePlaylistData>,
+  slug: SceneSlug,
+) {
+  return playlists[slug].tracks.map((track) => ({
     title: track.album ? `${track.album} - ${track.title}` : track.title,
     src: mediaUrl(track.src),
     durationSeconds: track.durationSeconds,
   }));
 }
 
-export const scenes: Record<SceneSlug, Scene> = {
-  construction: {
-    slug: "construction",
-    title: "Construction Zone",
-    video: {
-      src: mediaUrl("rooms/construction.mp4"),
-      width: 1080,
-      height: 1080,
-      durationSeconds: 810.069,
-      sourceFile:
-        "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet Construction - V3.mp4",
-      sync: {
-        enabled: true,
-      },
-      audio: {
-        enabled: true,
-        volume: 0.8,
-      },
-    },
-    playlist: {
-      enabled: true,
-      name: "HOME - Construction Zone",
-      folder:
-        "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
-      volume: 0.65,
-      sync: {
-        enabled: true,
-      },
-      tracks: getPlaylistTracks("construction"),
-    },
-    hotspots: sceneHotspots.construction,
-    overlays: [],
-    ticker: {
-      text: "Paper Planet Under Construction Coming Fall 2026",
-      position: "bottom",
-      speedPixelsPerSecond: 44,
-    },
-  },
-  hq: {
-    slug: "hq",
-    title: "Paper Planet HQ",
-    video: {
-      src: mediaUrl("rooms/hq.mp4"),
-      width: 1080,
-      height: 1080,
-      durationSeconds: 237.205,
-      sourceFile:
-        "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet HQ - V3.mp4",
-      sync: {
-        enabled: true,
-      },
-      audio: {
-        enabled: true,
-        volume: 0.8,
-      },
-    },
-    playlist: {
-      enabled: true,
-      name: "HQ",
-      folder: "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
-      volume: 0.65,
-      sync: {
-        enabled: true,
-      },
-      tracks: getPlaylistTracks("hq"),
-    },
-    hotspots: sceneHotspots.hq,
-    overlays: [
-      {
-        id: "hq-back-button",
-        label: "Back to Construction Zone",
-        src: "/icons/back_button_2.png",
-        zIndex: 100,
-        position: {
-          x: 3,
-          y: 3,
-          width: 12,
+export function createScenes(
+  playlists: Record<SceneSlug, ScenePlaylistData> = scenePlaylists,
+): Record<SceneSlug, Scene> {
+  return {
+    construction: {
+      slug: "construction",
+      title: "Construction Zone",
+      video: {
+        src: roomVideoUrl("rooms/construction.mp4"),
+        width: 1080,
+        height: 1080,
+        durationSeconds: 810.069,
+        sourceFile:
+          "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet Construction - V3.mp4",
+        sync: {
+          enabled: true,
         },
-        action: {
-          type: "navigate",
-          target: "construction",
+        audio: {
+          enabled: true,
+          volume: 0.8,
         },
       },
-    ],
-  },
-};
+      playlist: {
+        enabled: true,
+        name: playlists.construction.name,
+        folder: playlists.construction.folder,
+        volume: 0.65,
+        sync: {
+          enabled: true,
+        },
+        tracks: getPlaylistTracks(playlists, "construction"),
+      },
+      hotspots: sceneHotspots.construction,
+      overlays: [],
+      ticker: {
+        text: "Paper Planet Under Construction Coming Fall 2026",
+        position: "bottom",
+        speedPixelsPerSecond: 44,
+      },
+    },
+    hq: {
+      slug: "hq",
+      title: "Paper Planet HQ",
+      video: {
+        src: roomVideoUrl("rooms/hq.mp4"),
+        width: 1080,
+        height: 1080,
+        durationSeconds: 237.205,
+        sourceFile:
+          "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet HQ - V3.mp4",
+        sync: {
+          enabled: true,
+        },
+        audio: {
+          enabled: true,
+          volume: 0.8,
+        },
+      },
+      playlist: {
+        enabled: true,
+        name: playlists.hq.name,
+        folder: playlists.hq.folder,
+        volume: 0.65,
+        sync: {
+          enabled: true,
+        },
+        tracks: getPlaylistTracks(playlists, "hq"),
+      },
+      hotspots: sceneHotspots.hq,
+      overlays: [
+        {
+          id: "hq-back-button",
+          label: "Back to Construction Zone",
+          src: "/icons/back_button_2.png",
+          zIndex: 100,
+          position: {
+            x: 3,
+            y: 3,
+            width: 12,
+          },
+          action: {
+            type: "navigate",
+            target: "construction",
+          },
+        },
+      ],
+    },
+  };
+}
+
+export const scenes: Record<SceneSlug, Scene> = createScenes();
 
 export const sceneSlugs = Object.keys(scenes) as SceneSlug[];
 
