@@ -135,6 +135,7 @@ const ROOT_HREF = "/";
 const DEFAULT_STAGE_TRANSFORM: StageTransform = { scale: 1, x: 0, y: 0 };
 const MAX_STAGE_SCALE = 3;
 const WHEEL_ZOOM_SPEED = 0.006;
+const WHEEL_LINE_PIXELS = 16;
 
 type NativeGestureEvent = Event & {
   clientX?: number;
@@ -198,6 +199,20 @@ function getStageZoomTransform(
     scale,
     x: currentPoint.x - contentX * scale,
     y: currentPoint.y - contentY * scale,
+  };
+}
+
+function getNormalizedWheelDelta(event: WheelEvent) {
+  const multiplier =
+    event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? WHEEL_LINE_PIXELS
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? window.innerHeight
+        : 1;
+
+  return {
+    x: event.deltaX * multiplier,
+    y: event.deltaY * multiplier,
   };
 }
 
@@ -1179,19 +1194,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       return;
     }
 
-    if (
-      pointers.length === 1 &&
-      gesture.startCenter &&
-      gesture.startTransform.scale > 1
-    ) {
-      const currentPointer = pointers[0];
-
-      event.preventDefault();
-      setClampedStageTransform({
-        scale: gesture.startTransform.scale,
-        x: gesture.startTransform.x + currentPointer.x - gesture.startCenter.x,
-        y: gesture.startTransform.y + currentPointer.y - gesture.startCenter.y,
-      });
+    if (pointers.length === 1) {
+      return;
     }
   }
 
@@ -1235,6 +1239,23 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) {
+        const currentTransform = stageTransformRef.current;
+
+        if (currentTransform.scale <= 1.001) {
+          return;
+        }
+
+        event.preventDefault();
+        resetStageGesture();
+        nativeGestureStartRef.current = null;
+
+        const delta = getNormalizedWheelDelta(event);
+
+        setClampedStageTransform({
+          ...currentTransform,
+          x: currentTransform.x - delta.x,
+          y: currentTransform.y - delta.y,
+        });
         return;
       }
 
