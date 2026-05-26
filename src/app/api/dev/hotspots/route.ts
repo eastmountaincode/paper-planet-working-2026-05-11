@@ -6,11 +6,22 @@ import type { Hotspot, SceneSlug } from "@/lib/scenes";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const hotspotFilePath = path.join(process.cwd(), "src/lib/scene-hotspots.json");
+const sceneHotspotFilePath = path.join(
+  process.cwd(),
+  "src/lib/scene-hotspots.json",
+);
+const enterHotspotFilePath = path.join(
+  process.cwd(),
+  "src/lib/enter-hotspots.json",
+);
 const validSceneSlugs = new Set<SceneSlug>(["construction", "hq"]);
+const validTargets = new Set(["construction", "hq", "enter"]);
+
+type HotspotTarget = SceneSlug | "enter";
 
 type SaveHotspotsBody = {
-  scene: SceneSlug;
+  scene?: SceneSlug;
+  target?: HotspotTarget;
   hotspots: Hotspot[];
 };
 
@@ -20,9 +31,11 @@ function isSaveHotspotsBody(body: unknown): body is SaveHotspotsBody {
   }
 
   const candidate = body as Partial<SaveHotspotsBody>;
+  const target = candidate.target ?? candidate.scene;
+
   return (
-    typeof candidate.scene === "string" &&
-    validSceneSlugs.has(candidate.scene as SceneSlug) &&
+    typeof target === "string" &&
+    validTargets.has(target) &&
     Array.isArray(candidate.hotspots)
   );
 }
@@ -39,25 +52,48 @@ export async function POST(request: Request) {
 
   if (!isSaveHotspotsBody(body)) {
     return NextResponse.json(
-      { error: "Expected { scene, hotspots }." },
+      { error: "Expected { target, hotspots }." },
+      { status: 400 },
+    );
+  }
+
+  const target = body.target ?? body.scene;
+
+  if (target === "enter") {
+    await fs.writeFile(
+      enterHotspotFilePath,
+      `${JSON.stringify(body.hotspots, null, 2)}\n`,
+    );
+
+    return NextResponse.json({
+      ok: true,
+      target,
+      count: body.hotspots.length,
+    });
+  }
+
+  if (!target || !validSceneSlugs.has(target as SceneSlug)) {
+    return NextResponse.json(
+      { error: "Expected a valid room scene or enter target." },
       { status: 400 },
     );
   }
 
   const current = JSON.parse(
-    await fs.readFile(hotspotFilePath, "utf8"),
+    await fs.readFile(sceneHotspotFilePath, "utf8"),
   ) as Record<SceneSlug, Hotspot[]>;
 
   const next: Record<SceneSlug, Hotspot[]> = {
     ...current,
-    [body.scene]: body.hotspots,
+    [target]: body.hotspots,
   };
 
-  await fs.writeFile(hotspotFilePath, `${JSON.stringify(next, null, 2)}\n`);
+  await fs.writeFile(sceneHotspotFilePath, `${JSON.stringify(next, null, 2)}\n`);
 
   return NextResponse.json({
     ok: true,
-    scene: body.scene,
+    scene: target,
+    target,
     count: body.hotspots.length,
   });
 }

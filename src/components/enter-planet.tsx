@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { EnterArtworkButton } from "@/components/enter-artwork-button";
 import { useEntryState } from "@/components/entry-provider";
 import { getScenePlaylistPlayback } from "@/lib/playlist-sync";
 import { sceneSlugs, scenes } from "@/lib/scenes";
@@ -41,13 +42,7 @@ export function EnterPlanet() {
 
   return (
     <main className="flex h-dvh items-center justify-center overflow-hidden bg-black text-white">
-      <button
-        type="button"
-        onClick={enter}
-        className="cursor-pointer border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black"
-      >
-        Enter
-      </button>
+      <EnterArtworkButton onEnter={enter} />
     </main>
   );
 }

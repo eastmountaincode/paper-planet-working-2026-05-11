@@ -8,6 +8,7 @@ import {
   useState,
   type PointerEvent,
 } from "react";
+import enterHotspotsData from "@/lib/enter-hotspots.json";
 import type {
   Hotspot,
   HotspotAction,
@@ -17,19 +18,36 @@ import type {
 } from "@/lib/scenes";
 import { sceneSlugs, scenes } from "@/lib/scenes";
 
-const editorStorageKey = (scene: SceneSlug) =>
-  `paper-planet-hotspots-v2:${scene}`;
-const hiddenStorageKey = (scene: SceneSlug) =>
-  `paper-planet-hotspots-hidden:${scene}`;
-const legacyDraftStorageKey = (scene: SceneSlug) =>
-  `paper-planet-hotspot-drafts:${scene}`;
+type HotspotTarget = SceneSlug | "enter";
 
-const emptyHotspotsByScene = (): Record<SceneSlug, Hotspot[]> => ({
+const hotspotTargets: HotspotTarget[] = ["enter", ...sceneSlugs];
+const targetLabels: Record<HotspotTarget, string> = {
+  enter: "Enter Page",
+  construction: scenes.construction.title,
+  hq: scenes.hq.title,
+};
+const enterHotspots = enterHotspotsData as Hotspot[];
+const enterArtwork = {
+  src: "/enter/paper-planet-enter.webp",
+  width: 1173,
+  height: 868,
+};
+
+const editorStorageKey = (target: HotspotTarget) =>
+  `paper-planet-hotspots-v2:${target}`;
+const hiddenStorageKey = (target: HotspotTarget) =>
+  `paper-planet-hotspots-hidden:${target}`;
+const legacyDraftStorageKey = (target: HotspotTarget) =>
+  `paper-planet-hotspot-drafts:${target}`;
+
+const emptyHotspotsByTarget = (): Record<HotspotTarget, Hotspot[]> => ({
+  enter: [],
   construction: [],
   hq: [],
 });
 
-const emptyHiddenIdsByScene = (): Record<SceneSlug, string[]> => ({
+const emptyHiddenIdsByTarget = (): Record<HotspotTarget, string[]> => ({
+  enter: [],
   construction: [],
   hq: [],
 });
@@ -39,7 +57,7 @@ const percent = (value: number) => Number(value.toFixed(2));
 const pointsToString = (points: PercentPoint[]) =>
   points.map((point) => `${point.x},${point.y}`).join(" ");
 
-function createHotspotId(scene: SceneSlug) {
+function createHotspotId(target: HotspotTarget) {
   const fallbackId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
@@ -49,19 +67,19 @@ function createHotspotId(scene: SceneSlug) {
       ? crypto.randomUUID().slice(0, 8)
       : fallbackId;
 
-  return `${scene}-hotspot-${id}`;
+  return `${target}-hotspot-${id}`;
 }
 
-function createPolygonHotspot(scene: SceneSlug): PolygonHotspot {
+function createPolygonHotspot(target: HotspotTarget): PolygonHotspot {
   return {
-    id: createHotspotId(scene),
-    label: "New hotspot",
+    id: createHotspotId(target),
+    label: target === "enter" ? "Enter Paper Planet" : "New hotspot",
     zIndex: 0,
     shape: "polygon",
     points: [],
     action: {
       type: "navigate",
-      target: scene === "construction" ? "hq" : "construction",
+      target: target === "construction" ? "hq" : "construction",
     },
   };
 }
@@ -143,7 +161,7 @@ function hotspotSignature(hotspot: Hotspot) {
   });
 }
 
-function withUniqueHotspotIds(scene: SceneSlug, hotspots: Hotspot[]) {
+function withUniqueHotspotIds(target: HotspotTarget, hotspots: Hotspot[]) {
   const ids = new Set<string>();
 
   return hotspots.map((hotspot) => {
@@ -154,7 +172,7 @@ function withUniqueHotspotIds(scene: SceneSlug, hotspots: Hotspot[]) {
 
     const nextHotspot = {
       ...hotspot,
-      id: createHotspotId(scene),
+      id: createHotspotId(target),
     } as Hotspot;
 
     ids.add(nextHotspot.id);
@@ -162,7 +180,7 @@ function withUniqueHotspotIds(scene: SceneSlug, hotspots: Hotspot[]) {
   });
 }
 
-function dedupeHotspots(scene: SceneSlug, hotspots: Hotspot[]) {
+function dedupeHotspots(target: HotspotTarget, hotspots: Hotspot[]) {
   const signatureIndexes = new Map<string, number>();
   const uniqueHotspots: Hotspot[] = [];
 
@@ -187,7 +205,7 @@ function dedupeHotspots(scene: SceneSlug, hotspots: Hotspot[]) {
     uniqueHotspots.push(hotspot);
   }
 
-  return withUniqueHotspotIds(scene, uniqueHotspots);
+  return withUniqueHotspotIds(target, uniqueHotspots);
 }
 
 function parseStoredHotspots(value: string | null) {
@@ -218,64 +236,65 @@ function parseStoredHiddenIds(value: string | null) {
   }
 }
 
-function loadHotspotsByScene() {
-  const hotspotsByScene = emptyHotspotsByScene();
+function loadHotspotsByTarget() {
+  const hotspotsByTarget = emptyHotspotsByTarget();
 
+  hotspotsByTarget.enter = enterHotspots;
   for (const slug of sceneSlugs) {
-    hotspotsByScene[slug] = scenes[slug].hotspots;
+    hotspotsByTarget[slug] = scenes[slug].hotspots;
   }
 
-  return hotspotsByScene;
+  return hotspotsByTarget;
 }
 
-function loadStoredHotspotsByScene() {
-  const hotspotsByScene = loadHotspotsByScene();
+function loadStoredHotspotsByTarget() {
+  const hotspotsByTarget = loadHotspotsByTarget();
 
   if (typeof window === "undefined") {
-    return hotspotsByScene;
+    return hotspotsByTarget;
   }
 
-  for (const slug of sceneSlugs) {
+  for (const target of hotspotTargets) {
     const storedHotspots = parseStoredHotspots(
-      window.localStorage.getItem(editorStorageKey(slug)),
+      window.localStorage.getItem(editorStorageKey(target)),
     );
 
     if (storedHotspots) {
-      hotspotsByScene[slug] = dedupeHotspots(slug, storedHotspots);
+      hotspotsByTarget[target] = dedupeHotspots(target, storedHotspots);
       continue;
     }
 
     const legacyDrafts = parseStoredHotspots(
-      window.localStorage.getItem(legacyDraftStorageKey(slug)),
+      window.localStorage.getItem(legacyDraftStorageKey(target)),
     );
 
-    hotspotsByScene[slug] = dedupeHotspots(slug, [
-      ...scenes[slug].hotspots,
+    hotspotsByTarget[target] = dedupeHotspots(target, [
+      ...hotspotsByTarget[target],
       ...(legacyDrafts ?? []),
     ]);
   }
 
-  return hotspotsByScene;
+  return hotspotsByTarget;
 }
 
-function loadHiddenIdsByScene() {
-  return emptyHiddenIdsByScene();
+function loadHiddenIdsByTarget() {
+  return emptyHiddenIdsByTarget();
 }
 
-function loadStoredHiddenIdsByScene() {
-  const hiddenIdsByScene = emptyHiddenIdsByScene();
+function loadStoredHiddenIdsByTarget() {
+  const hiddenIdsByTarget = emptyHiddenIdsByTarget();
 
   if (typeof window === "undefined") {
-    return hiddenIdsByScene;
+    return hiddenIdsByTarget;
   }
 
-  for (const slug of sceneSlugs) {
-    hiddenIdsByScene[slug] = parseStoredHiddenIds(
-      window.localStorage.getItem(hiddenStorageKey(slug)),
+  for (const target of hotspotTargets) {
+    hiddenIdsByTarget[target] = parseStoredHiddenIds(
+      window.localStorage.getItem(hiddenStorageKey(target)),
     );
   }
 
-  return hiddenIdsByScene;
+  return hiddenIdsByTarget;
 }
 
 function serializeHotspots(hotspots: Hotspot[]) {
@@ -283,7 +302,7 @@ function serializeHotspots(hotspots: Hotspot[]) {
 }
 
 type HotspotEditorSidebarProps = {
-  sceneSlug: SceneSlug;
+  target: HotspotTarget;
   hotspots: Hotspot[];
   hotspotsFrontFirst: Hotspot[];
   hiddenIds: string[];
@@ -304,7 +323,7 @@ type HotspotEditorSidebarProps = {
 };
 
 function HotspotEditorSidebar({
-  sceneSlug,
+  target,
   hotspots,
   hotspotsFrontFirst,
   hiddenIds,
@@ -323,14 +342,16 @@ function HotspotEditorSidebar({
   onUpdateSelectedAction,
   onMoveSelectedZIndex,
 }: HotspotEditorSidebarProps) {
+  const isEnterTarget = target === "enter";
+
   return (
     <aside className="min-h-0 overflow-y-auto overscroll-contain bg-black p-4">
       <div className="border-b border-white/15 pb-4">
         <h1 className="text-lg font-semibold">Hotspot Editor</h1>
         <p className="mt-2 text-sm leading-6 text-white/65">
-          Draw on the video to create a clickable area. Select a hotspot to
+          Draw on the media to create a clickable area. Select a hotspot to
           rename it, change its action, hide it, delete it, or save the current
-          scene back into the app.
+          target back into the app.
         </p>
       </div>
 
@@ -371,7 +392,7 @@ function HotspotEditorSidebar({
             onClick={onClearHotspots}
             className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
           >
-            Clear Scene
+              Clear Target
           </button>
         </div>
         {status ? <p className="font-mono text-xs text-white/70">{status}</p> : null}
@@ -405,7 +426,9 @@ function HotspotEditorSidebar({
                     <span className="text-xs text-white/55">
                       {hotspot.shape}, {getHotspotPointCount(hotspot)} points,
                       z {getHotspotZIndex(hotspot)},{" "}
-                      {getHotspotActionLabel(hotspot)}
+                      {isEnterTarget
+                        ? "enters Paper Planet"
+                        : getHotspotActionLabel(hotspot)}
                     </span>
                   </button>
                   <div className="grid grid-cols-2 gap-2">
@@ -485,90 +508,98 @@ function HotspotEditorSidebar({
               Bring Front
             </button>
           </div>
-          <label className="grid gap-1 text-sm">
-            Action
-            <select
-              value={selectedHotspot.action.type}
-              onChange={(event) => {
-                if (event.target.value === "mailto") {
-                  onUpdateSelectedAction({
-                    type: "mailto",
-                    email: "paperplanetrecords@gmail.com",
-                    subject: "Paper Planet Records",
-                  });
-                  return;
-                }
+	          {isEnterTarget ? (
+	            <p className="text-sm text-white/55">
+	              This hotspot enters Paper Planet. Its action is fixed.
+	            </p>
+	          ) : (
+	            <>
+	              <label className="grid gap-1 text-sm">
+	                Action
+	                <select
+	                  value={selectedHotspot.action.type}
+	                  onChange={(event) => {
+	                    if (event.target.value === "mailto") {
+	                      onUpdateSelectedAction({
+	                        type: "mailto",
+	                        email: "paperplanetrecords@gmail.com",
+	                        subject: "Paper Planet Records",
+	                      });
+	                      return;
+	                    }
 
-                onUpdateSelectedAction({
-                  type: "navigate",
-                  target: sceneSlug === "construction" ? "hq" : "construction",
-                });
-              }}
-              className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
-            >
-              <option value="navigate">Navigate to scene</option>
-              <option value="mailto">Open email prompt</option>
-            </select>
-          </label>
+	                    onUpdateSelectedAction({
+	                      type: "navigate",
+	                      target: target === "construction" ? "hq" : "construction",
+	                    });
+	                  }}
+	                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+	                >
+	                  <option value="navigate">Navigate to scene</option>
+	                  <option value="mailto">Open email prompt</option>
+	                </select>
+	              </label>
 
-          {selectedHotspot.action.type === "navigate" ? (
-            <label className="grid gap-1 text-sm">
-              Destination
-              <select
-                value={selectedHotspot.action.target}
-                onChange={(event) =>
-                  onUpdateSelectedAction({
-                    type: "navigate",
-                    target: event.target.value as SceneSlug,
-                  })
-                }
-                className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
-              >
-                {sceneSlugs.map((slug) => (
-                  <option key={slug} value={slug}>
-                    {scenes[slug].title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <>
-              <label className="grid gap-1 text-sm">
-                Email
-                <input
-                  value={selectedHotspot.action.email}
-                  onChange={(event) =>
-                    onUpdateSelectedAction({
-                      type: "mailto",
-                      email: event.target.value,
-                      subject:
-                        selectedHotspot.action.type === "mailto"
-                          ? selectedHotspot.action.subject
-                          : undefined,
-                    })
-                  }
-                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Subject
-                <input
-                  value={selectedHotspot.action.subject ?? ""}
-                  onChange={(event) =>
-                    onUpdateSelectedAction({
-                      type: "mailto",
-                      email:
-                        selectedHotspot.action.type === "mailto"
-                          ? selectedHotspot.action.email
-                          : "paperplanetrecords@gmail.com",
-                      subject: event.target.value,
-                    })
-                  }
-                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
-                />
-              </label>
-            </>
-          )}
+	              {selectedHotspot.action.type === "navigate" ? (
+	                <label className="grid gap-1 text-sm">
+	                  Destination
+	                  <select
+	                    value={selectedHotspot.action.target}
+	                    onChange={(event) =>
+	                      onUpdateSelectedAction({
+	                        type: "navigate",
+	                        target: event.target.value as SceneSlug,
+	                      })
+	                    }
+	                    className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+	                  >
+	                    {sceneSlugs.map((slug) => (
+	                      <option key={slug} value={slug}>
+	                        {scenes[slug].title}
+	                      </option>
+	                    ))}
+	                  </select>
+	                </label>
+	              ) : (
+	                <>
+	                  <label className="grid gap-1 text-sm">
+	                    Email
+	                    <input
+	                      value={selectedHotspot.action.email}
+	                      onChange={(event) =>
+	                        onUpdateSelectedAction({
+	                          type: "mailto",
+	                          email: event.target.value,
+	                          subject:
+	                            selectedHotspot.action.type === "mailto"
+	                              ? selectedHotspot.action.subject
+	                              : undefined,
+	                        })
+	                      }
+	                      className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+	                    />
+	                  </label>
+	                  <label className="grid gap-1 text-sm">
+	                    Subject
+	                    <input
+	                      value={selectedHotspot.action.subject ?? ""}
+	                      onChange={(event) =>
+	                        onUpdateSelectedAction({
+	                          type: "mailto",
+	                          email:
+	                            selectedHotspot.action.type === "mailto"
+	                              ? selectedHotspot.action.email
+	                              : "paperplanetrecords@gmail.com",
+	                          subject: event.target.value,
+	                        })
+	                      }
+	                      className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+	                    />
+	                  </label>
+	                </>
+	              )}
+	            </>
+	          )}
         </form>
       ) : (
         <p className="py-4 text-sm text-white/55">Select a hotspot to edit it.</p>
@@ -578,9 +609,11 @@ function HotspotEditorSidebar({
 }
 
 export function HotspotEditor() {
-  const [sceneSlug, setSceneSlug] = useState<SceneSlug>("construction");
-  const [hotspotsByScene, setHotspotsByScene] = useState(loadHotspotsByScene);
-  const [hiddenIdsByScene, setHiddenIdsByScene] = useState(loadHiddenIdsByScene);
+  const [target, setTarget] = useState<HotspotTarget>("enter");
+  const [hotspotsByTarget, setHotspotsByTarget] = useState(loadHotspotsByTarget);
+  const [hiddenIdsByTarget, setHiddenIdsByTarget] = useState(
+    loadHiddenIdsByTarget,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activePoints, setActivePoints] = useState<PercentPoint[]>([]);
   const [status, setStatus] = useState("");
@@ -591,9 +624,9 @@ export function HotspotEditor() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isDrawingRef = useRef(false);
 
-  const scene = scenes[sceneSlug];
-  const hotspots = hotspotsByScene[sceneSlug];
-  const hiddenIds = hiddenIdsByScene[sceneSlug];
+  const scene = target === "enter" ? null : scenes[target];
+  const hotspots = hotspotsByTarget[target];
+  const hiddenIds = hiddenIdsByTarget[target];
   const selectedHotspot =
     hotspots.find((hotspot) => hotspot.id === selectedId) ?? null;
   const orderedHotspots = useMemo(
@@ -605,14 +638,17 @@ export function HotspotEditor() {
     [hotspots],
   );
   const aspectRatio = useMemo(
-    () => `${scene.video.width} / ${scene.video.height}`,
-    [scene.video.height, scene.video.width],
+    () =>
+      target === "enter"
+        ? `${enterArtwork.width} / ${enterArtwork.height}`
+        : `${scene?.video.width ?? 1} / ${scene?.video.height ?? 1}`,
+    [scene?.video.height, scene?.video.width, target],
   );
 
   useEffect(() => {
     const loadStorageTimeout = window.setTimeout(() => {
-      setHotspotsByScene(loadStoredHotspotsByScene());
-      setHiddenIdsByScene(loadStoredHiddenIdsByScene());
+      setHotspotsByTarget(loadStoredHotspotsByTarget());
+      setHiddenIdsByTarget(loadStoredHiddenIdsByTarget());
       setStorageReady(true);
     }, 0);
 
@@ -627,10 +663,10 @@ export function HotspotEditor() {
     }
 
     window.localStorage.setItem(
-      editorStorageKey(sceneSlug),
+      editorStorageKey(target),
       JSON.stringify(hotspots),
     );
-  }, [hotspots, sceneSlug, storageReady]);
+  }, [hotspots, storageReady, target]);
 
   useEffect(() => {
     if (!storageReady) {
@@ -638,37 +674,37 @@ export function HotspotEditor() {
     }
 
     window.localStorage.setItem(
-      hiddenStorageKey(sceneSlug),
+      hiddenStorageKey(target),
       JSON.stringify(hiddenIds),
     );
-  }, [hiddenIds, sceneSlug, storageReady]);
+  }, [hiddenIds, storageReady, target]);
 
-  function setSceneHotspots(
+  function setTargetHotspots(
     updater: Hotspot[] | ((currentHotspots: Hotspot[]) => Hotspot[]),
   ) {
-    setHotspotsByScene((currentByScene) => {
-      const currentHotspots = currentByScene[sceneSlug];
+    setHotspotsByTarget((currentByTarget) => {
+      const currentHotspots = currentByTarget[target];
       const nextHotspots =
         typeof updater === "function" ? updater(currentHotspots) : updater;
 
       return {
-        ...currentByScene,
-        [sceneSlug]: dedupeHotspots(sceneSlug, nextHotspots),
+        ...currentByTarget,
+        [target]: dedupeHotspots(target, nextHotspots),
       };
     });
   }
 
-  function setSceneHiddenIds(
+  function setTargetHiddenIds(
     updater: string[] | ((currentHiddenIds: string[]) => string[]),
   ) {
-    setHiddenIdsByScene((currentByScene) => {
-      const currentHiddenIds = currentByScene[sceneSlug];
+    setHiddenIdsByTarget((currentByTarget) => {
+      const currentHiddenIds = currentByTarget[target];
       const nextHiddenIds =
         typeof updater === "function" ? updater(currentHiddenIds) : updater;
 
       return {
-        ...currentByScene,
-        [sceneSlug]: Array.from(new Set(nextHiddenIds)),
+        ...currentByTarget,
+        [target]: Array.from(new Set(nextHiddenIds)),
       };
     });
   }
@@ -726,12 +762,12 @@ export function HotspotEditor() {
         ? Math.max(...hotspots.map((hotspot) => getHotspotZIndex(hotspot))) + 1
         : 0;
     const nextHotspot: PolygonHotspot = {
-      ...createPolygonHotspot(sceneSlug),
+      ...createPolygonHotspot(target),
       points: normalizedPoints,
       zIndex: nextZIndex,
     };
 
-    setSceneHotspots((currentHotspots) => [...currentHotspots, nextHotspot]);
+    setTargetHotspots((currentHotspots) => [...currentHotspots, nextHotspot]);
     setSelectedId(nextHotspot.id);
     setStatus("Hotspot created. Name it, choose an action, then save.");
 
@@ -758,7 +794,7 @@ export function HotspotEditor() {
       return;
     }
 
-    setSceneHotspots((currentHotspots) =>
+    setTargetHotspots((currentHotspots) =>
       currentHotspots.map((hotspot) =>
         hotspot.id === selectedHotspot.id
           ? ({ ...hotspot, ...updates } as Hotspot)
@@ -776,10 +812,10 @@ export function HotspotEditor() {
   }
 
   function deleteHotspot(id: string) {
-    setSceneHotspots((currentHotspots) =>
+    setTargetHotspots((currentHotspots) =>
       currentHotspots.filter((hotspot) => hotspot.id !== id),
     );
-    setSceneHiddenIds((currentHiddenIds) =>
+    setTargetHiddenIds((currentHiddenIds) =>
       currentHiddenIds.filter((hiddenId) => hiddenId !== id),
     );
 
@@ -791,21 +827,21 @@ export function HotspotEditor() {
   }
 
   function clearHotspots() {
-    setSceneHotspots([]);
-    setSceneHiddenIds([]);
+    setTargetHotspots([]);
+    setTargetHiddenIds([]);
     setSelectedId(null);
-    setStatus("All hotspots removed from this scene in the editor.");
+    setStatus("All hotspots removed from this target in the editor.");
   }
 
   function resetToAppHotspots() {
-    setSceneHotspots(scene.hotspots);
-    setSceneHiddenIds([]);
+    setTargetHotspots(target === "enter" ? enterHotspots : scenes[target].hotspots);
+    setTargetHiddenIds([]);
     setSelectedId(null);
-    setStatus("Reset this scene to the hotspots currently saved in the app.");
+    setStatus("Reset this target to the hotspots currently saved in the app.");
   }
 
   function toggleHidden(id: string) {
-    setSceneHiddenIds((currentHiddenIds) =>
+    setTargetHiddenIds((currentHiddenIds) =>
       currentHiddenIds.includes(id)
         ? currentHiddenIds.filter((hiddenId) => hiddenId !== id)
         : [...currentHiddenIds, id],
@@ -842,7 +878,7 @@ export function HotspotEditor() {
   }
 
   function copySceneHotspots() {
-    void copyText(serializeHotspots(hotspots), "Copied scene hotspots JSON.");
+    void copyText(serializeHotspots(hotspots), "Copied target hotspots JSON.");
   }
 
   async function saveToAppFile() {
@@ -854,7 +890,7 @@ export function HotspotEditor() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        scene: sceneSlug,
+        target,
         hotspots,
       }),
     });
@@ -872,7 +908,7 @@ export function HotspotEditor() {
   function seekTo(value: number) {
     const video = videoRef.current;
 
-    if (!video) {
+    if (!video || !scene) {
       return;
     }
 
@@ -883,7 +919,7 @@ export function HotspotEditor() {
   function togglePlayback() {
     const video = videoRef.current;
 
-    if (!video) {
+    if (!video || !scene) {
       return;
     }
 
@@ -946,17 +982,17 @@ export function HotspotEditor() {
         <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overscroll-contain bg-black p-4">
           <nav className="flex flex-wrap items-center justify-between gap-3">
             <Link
-              href={`/rooms/${sceneSlug}?hotspots=1`}
+              href={target === "enter" ? "/" : `/rooms/${target}?hotspots=1`}
               className="font-mono text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white"
             >
               Paper Planet Hotspots
             </Link>
             <label className="flex items-center gap-2 text-sm text-white/70">
-              Scene
+              Target
               <select
-                value={sceneSlug}
+                value={target}
                 onChange={(event) => {
-                  setSceneSlug(event.target.value as SceneSlug);
+                  setTarget(event.target.value as HotspotTarget);
                   setSelectedId(null);
                   setActivePoints([]);
                   cancelDrawing();
@@ -964,9 +1000,9 @@ export function HotspotEditor() {
                 }}
                 className="border border-white/25 bg-black px-3 py-2 text-white outline-none focus:border-white"
               >
-                {sceneSlugs.map((slug) => (
+                {hotspotTargets.map((slug) => (
                   <option key={slug} value={slug}>
-                    {scenes[slug].title}
+                    {targetLabels[slug]}
                   </option>
                 ))}
               </select>
@@ -977,25 +1013,35 @@ export function HotspotEditor() {
             className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] touch-none overflow-hidden bg-black"
             style={{ aspectRatio }}
           >
-            <video
-              key={scene.video.src}
-              ref={videoRef}
-              className="absolute inset-0 h-full w-full object-cover"
-              src={scene.video.src}
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              onLoadedMetadata={(event) => {
-                setDuration(event.currentTarget.duration);
-                setCurrentTime(event.currentTarget.currentTime);
-              }}
-              onTimeUpdate={(event) =>
-                setCurrentTime(event.currentTarget.currentTime)
-              }
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-            />
+            {target === "enter" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="absolute inset-0 h-full w-full object-contain"
+                src={enterArtwork.src}
+                alt=""
+                draggable={false}
+              />
+            ) : scene ? (
+              <video
+                key={scene.video.src}
+                ref={videoRef}
+                className="absolute inset-0 h-full w-full object-cover"
+                src={scene.video.src}
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                onLoadedMetadata={(event) => {
+                  setDuration(event.currentTarget.duration);
+                  setCurrentTime(event.currentTarget.currentTime);
+                }}
+                onTimeUpdate={(event) =>
+                  setCurrentTime(event.currentTarget.currentTime)
+                }
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+              />
+            ) : null}
 
             <svg
               className="absolute inset-0 h-full w-full cursor-crosshair"
@@ -1020,33 +1066,35 @@ export function HotspotEditor() {
             </svg>
           </div>
 
-          <div className="grid gap-3 border-t border-white/15 pt-3 font-mono text-xs text-white/70 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-            <button
-              type="button"
-              onClick={togglePlayback}
-              className="border border-white/25 px-3 py-2 text-white transition hover:border-white"
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={duration || scene.video.durationSeconds}
-              step={0.1}
-              value={currentTime}
-              onChange={(event) => seekTo(Number(event.target.value))}
-              className="w-full accent-white"
-              aria-label="Video time"
-            />
-            <p>
-              {formatTime(currentTime)} /{" "}
-              {formatTime(duration || scene.video.durationSeconds)}
-            </p>
-          </div>
+          {scene ? (
+            <div className="grid gap-3 border-t border-white/15 pt-3 font-mono text-xs text-white/70 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+              <button
+                type="button"
+                onClick={togglePlayback}
+                className="border border-white/25 px-3 py-2 text-white transition hover:border-white"
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={duration || scene.video.durationSeconds}
+                step={0.1}
+                value={currentTime}
+                onChange={(event) => seekTo(Number(event.target.value))}
+                className="w-full accent-white"
+                aria-label="Video time"
+              />
+              <p>
+                {formatTime(currentTime)} /{" "}
+                {formatTime(duration || scene.video.durationSeconds)}
+              </p>
+            </div>
+          ) : null}
         </section>
 
         <HotspotEditorSidebar
-          sceneSlug={sceneSlug}
+          target={target}
           hotspots={hotspots}
           hotspotsFrontFirst={hotspotsFrontFirst}
           hiddenIds={hiddenIds}

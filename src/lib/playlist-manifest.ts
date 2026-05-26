@@ -109,7 +109,9 @@ export function buildAudioKey(
   const folderParts = parts.map(slugifyPathSegment);
   const baseName = slugifyPathSegment(stripAudioExtension(fileName));
 
-  return ["audio", room, batchId, ...folderParts, `${baseName}.mp3`].join("/");
+  return ["audio", "normalized", room, batchId, ...folderParts, `${baseName}.mp3`].join(
+    "/",
+  );
 }
 
 function isRecord(value: unknown): value is UnknownRecord {

@@ -22,6 +22,7 @@ import {
   normalizePlaylistManifest,
   playlistManifestToScenePlaylists,
 } from "@/lib/playlist-manifest";
+import { EnterArtworkButton } from "@/components/enter-artwork-button";
 
 type RoomExperienceProps = {
   scene: Scene;
@@ -318,12 +319,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [playlistTrackIndex, setPlaylistTrackIndex] = useState(
-    () => getInitialPlaylistPosition(scene).trackIndex,
-  );
-  const [playlistStartTime, setPlaylistStartTime] = useState(
-    () => getInitialPlaylistPosition(scene).currentTime,
-  );
+  const [playlistTrackIndex, setPlaylistTrackIndex] = useState(0);
+  const [playlistStartTime, setPlaylistStartTime] = useState(0);
   const fadeOutInProgressRef = useRef(false);
   const navigationIdRef = useRef(0);
   const [isExiting, setIsExiting] = useState(false);
@@ -1368,21 +1365,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             devOutline(devBorders, 4),
           )}
         >
-          <button
-            type="button"
-            onPointerDown={() => {
+          <EnterArtworkButton
+            onPointerPrime={() => {
               if (activePlaylistTrack) {
                 primeRoomPlaylistTrack(scene.slug, activePlaylistTrack.src);
               }
             }}
-            onClick={enterPlanet}
-            className={classNames(
-              "cursor-pointer border border-white px-8 py-4 font-mono text-sm uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-black",
-              devOutline(devBorders, 5),
-            )}
-          >
-            Enter
-          </button>
+            onEnter={enterPlanet}
+            className={devOutline(devBorders, 5)}
+          />
         </div>
       ) : null}
 
