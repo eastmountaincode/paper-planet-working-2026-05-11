@@ -41,7 +41,7 @@ export function EnterPlanet() {
   }
 
   return (
-    <main className="flex h-dvh items-center justify-center overflow-hidden bg-black text-white">
+    <main className="flex h-dvh touch-none items-center justify-center overflow-hidden overscroll-none bg-black text-white">
       <EnterArtworkButton onEnter={enter} />
     </main>
   );

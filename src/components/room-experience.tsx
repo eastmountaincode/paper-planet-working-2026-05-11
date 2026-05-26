@@ -134,6 +134,13 @@ const ROOM_TRANSITION_MS = 200;
 const ROOT_HREF = "/";
 const DEFAULT_STAGE_TRANSFORM: StageTransform = { scale: 1, x: 0, y: 0 };
 const MAX_STAGE_SCALE = 3;
+const WHEEL_ZOOM_SPEED = 0.006;
+
+type NativeGestureEvent = Event & {
+  clientX?: number;
+  clientY?: number;
+  scale?: number;
+};
 
 function wait(milliseconds: number) {
   return new Promise<void>((resolve) => {
@@ -173,6 +180,24 @@ function clampStageTransform(
     scale,
     x: clamp(transform.x, -maxX, maxX),
     y: clamp(transform.y, -maxY, maxY),
+  };
+}
+
+function getStageZoomTransform(
+  startTransform: StageTransform,
+  startPoint: StagePointer,
+  currentPoint: StagePointer,
+  nextScale: number,
+): StageTransform {
+  const scale = clamp(nextScale, 1, MAX_STAGE_SCALE);
+  const startScale = startTransform.scale || 1;
+  const contentX = (startPoint.x - startTransform.x) / startScale;
+  const contentY = (startPoint.y - startTransform.y) / startScale;
+
+  return {
+    scale,
+    x: currentPoint.x - contentX * scale,
+    y: currentPoint.y - contentY * scale,
   };
 }
 
@@ -336,6 +361,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     startDistance: 0,
     startTransform: DEFAULT_STAGE_TRANSFORM,
   });
+  const nativeGestureStartRef = useRef<{
+    point: StagePointer;
+    transform: StageTransform;
+  } | null>(null);
 
   const aspectRatio = useMemo(
     () => `${scene.video.width} / ${scene.video.height}`,
@@ -1054,6 +1083,34 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     };
   }
 
+  function getStagePointerFromClient(clientX: number, clientY: number) {
+    const rect = stageRef.current?.getBoundingClientRect();
+
+    if (!rect) {
+      return null;
+    }
+
+    return {
+      x: clientX - rect.left - rect.width / 2,
+      y: clientY - rect.top - rect.height / 2,
+    };
+  }
+
+  function getStageCenterPointer() {
+    return { x: 0, y: 0 };
+  }
+
+  function zoomStageAt(
+    startTransform: StageTransform,
+    startPoint: StagePointer,
+    currentPoint: StagePointer,
+    nextScale: number,
+  ) {
+    setClampedStageTransform(
+      getStageZoomTransform(startTransform, startPoint, currentPoint, nextScale),
+    );
+  }
+
   function resetStageGesture() {
     stageGestureRef.current.pointers.clear();
     stageGestureRef.current.startCenter = null;
@@ -1113,11 +1170,12 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       const nextScale = gesture.startTransform.scale * distanceRatio;
 
       event.preventDefault();
-      setClampedStageTransform({
-        scale: nextScale,
-        x: gesture.startTransform.x + currentCenter.x - gesture.startCenter.x,
-        y: gesture.startTransform.y + currentCenter.y - gesture.startCenter.y,
-      });
+      zoomStageAt(
+        gesture.startTransform,
+        gesture.startCenter,
+        currentCenter,
+        nextScale,
+      );
       return;
     }
 
@@ -1167,6 +1225,98 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     resetStageGesture();
   }
+
+  useEffect(() => {
+    const stage = stageRef.current;
+
+    if (!stage) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+
+      const pointer = getStagePointerFromClient(event.clientX, event.clientY);
+
+      if (!pointer) {
+        return;
+      }
+
+      event.preventDefault();
+      resetStageGesture();
+      nativeGestureStartRef.current = null;
+
+      const currentTransform = stageTransformRef.current;
+      const nextScale =
+        currentTransform.scale * Math.exp(-event.deltaY * WHEEL_ZOOM_SPEED);
+
+      zoomStageAt(currentTransform, pointer, pointer, nextScale);
+    };
+
+    const handleGestureStart = (event: Event) => {
+      const gestureEvent = event as NativeGestureEvent;
+      const pointer =
+        typeof gestureEvent.clientX === "number" &&
+        typeof gestureEvent.clientY === "number"
+          ? getStagePointerFromClient(gestureEvent.clientX, gestureEvent.clientY)
+          : getStageCenterPointer();
+
+      event.preventDefault();
+      resetStageGesture();
+      nativeGestureStartRef.current = {
+        point: pointer ?? getStageCenterPointer(),
+        transform: stageTransformRef.current,
+      };
+    };
+
+    const handleGestureChange = (event: Event) => {
+      const gestureEvent = event as NativeGestureEvent;
+      const start = nativeGestureStartRef.current;
+      const scale = Number(gestureEvent.scale);
+
+      if (!start || !Number.isFinite(scale)) {
+        return;
+      }
+
+      const currentPoint =
+        typeof gestureEvent.clientX === "number" &&
+        typeof gestureEvent.clientY === "number"
+          ? getStagePointerFromClient(gestureEvent.clientX, gestureEvent.clientY)
+          : start.point;
+
+      event.preventDefault();
+      zoomStageAt(
+        start.transform,
+        start.point,
+        currentPoint ?? start.point,
+        start.transform.scale * scale,
+      );
+    };
+
+    const handleGestureEnd = (event: Event) => {
+      event.preventDefault();
+      nativeGestureStartRef.current = null;
+      resetStageGesture();
+    };
+
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    stage.addEventListener("gesturestart", handleGestureStart, {
+      passive: false,
+    });
+    stage.addEventListener("gesturechange", handleGestureChange, {
+      passive: false,
+    });
+    stage.addEventListener("gestureend", handleGestureEnd, { passive: false });
+
+    return () => {
+      stage.removeEventListener("wheel", handleWheel);
+      stage.removeEventListener("gesturestart", handleGestureStart);
+      stage.removeEventListener("gesturechange", handleGestureChange);
+      stage.removeEventListener("gestureend", handleGestureEnd);
+    };
+  });
 
   return (
     <main

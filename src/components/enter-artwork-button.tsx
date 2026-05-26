@@ -72,7 +72,7 @@ export function EnterArtworkButton({
   return (
     <div
       className={classNames(
-        "relative bg-transparent p-0 focus-within:outline-none focus-within:ring-2 focus-within:ring-white focus-within:ring-offset-4 focus-within:ring-offset-black",
+        "relative touch-none select-none bg-transparent p-0 focus-within:outline-none focus-within:ring-2 focus-within:ring-white focus-within:ring-offset-4 focus-within:ring-offset-black",
         className,
       )}
     >
