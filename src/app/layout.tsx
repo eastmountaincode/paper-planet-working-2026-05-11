@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import { EntryProvider } from "@/components/entry-provider";
 import "./globals.css";
 
@@ -38,6 +39,7 @@ export default function RootLayout({
     >
       <body className="flex h-full flex-col overflow-hidden">
         <EntryProvider>{children}</EntryProvider>
+        <Analytics />
       </body>
     </html>
   );
