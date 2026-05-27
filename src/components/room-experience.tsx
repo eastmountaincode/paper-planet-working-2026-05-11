@@ -21,6 +21,7 @@ import {
   createScenes,
   getSceneVideoSource,
   sceneSlugs,
+  sceneViewports,
   scenes as staticScenes,
 } from "@/lib/scenes";
 import {
@@ -487,7 +488,9 @@ function SceneTickerOverlay({ ticker, devBorders }: SceneTickerOverlayProps) {
 export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [runtimeScenes, setRuntimeScenes] = useState(staticScenes);
   const [scene, setActiveScene] = useState(initialScene);
-  const [sceneViewport, setSceneViewport] = useState<SceneViewport>("desktop");
+  const [sceneViewport, setSceneViewport] = useState<SceneViewport | null>(null);
+  const [visibleSceneViewport, setVisibleSceneViewport] =
+    useState<SceneViewport | null>(null);
   const searchParams = useSearchParams();
   const {
     attachVideoAudio,
@@ -506,8 +509,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     videoGain,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoElementsRef = useRef<Record<SceneViewport, HTMLVideoElement | null>>(
+    {
+      desktop: null,
+      mobile: null,
+    },
+  );
   const lastVideoTimeRef = useRef(0);
-  const sceneViewportRef = useRef<SceneViewport>("desktop");
+  const sceneViewportRef = useRef<SceneViewport | null>(null);
+  const visibleSceneViewportRef = useRef<SceneViewport | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const sceneSlugRef = useRef(initialScene.slug);
   const debugHotspots =
@@ -548,11 +558,14 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     transform: StageTransform;
   } | null>(null);
 
+  const resolvedSceneViewport =
+    visibleSceneViewport ?? sceneViewport ?? "desktop";
   const activeVideoSource = useMemo(
-    () => getSceneVideoSource(scene, sceneViewport),
-    [scene, sceneViewport],
+    () => getSceneVideoSource(scene, resolvedSceneViewport),
+    [resolvedSceneViewport, scene],
   );
-  const activeHotspots = scene.hotspotVariants?.[sceneViewport] ?? scene.hotspots;
+  const activeHotspots =
+    scene.hotspotVariants?.[resolvedSceneViewport] ?? scene.hotspots;
   const aspectRatio = useMemo(
     () => `${activeVideoSource.width} / ${activeVideoSource.height}`,
     [activeVideoSource.height, activeVideoSource.width],
@@ -632,6 +645,33 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [activePlaylistTrack, showMetadataToast],
   );
 
+  const getSyncedTime = useCallback(
+    () => {
+      const offset = scene.video.sync?.epochOffsetSeconds ?? 0;
+      const duration = scene.video.durationSeconds;
+
+      return (((Date.now() / 1000 + offset) % duration) + duration) % duration;
+    },
+    [scene.video.durationSeconds, scene.video.sync?.epochOffsetSeconds],
+  );
+
+  const syncVideoElementTime = useCallback(
+    (video: HTMLVideoElement) => {
+      if (syncedPlayback) {
+        video.currentTime = getSyncedTime();
+        return;
+      }
+
+      if (lastVideoTimeRef.current > 0) {
+        video.currentTime = Math.min(
+          lastVideoTimeRef.current,
+          Math.max(video.duration - 0.1, 0),
+        );
+      }
+    },
+    [getSyncedTime, syncedPlayback],
+  );
+
   useEffect(() => {
     stageTransformRef.current = stageTransform;
   }, [stageTransform]);
@@ -639,6 +679,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     sceneSlugRef.current = scene.slug;
   }, [scene.slug]);
+
+  useEffect(() => {
+    visibleSceneViewportRef.current = visibleSceneViewport;
+    videoRef.current = visibleSceneViewport
+      ? videoElementsRef.current[visibleSceneViewport]
+      : null;
+  }, [visibleSceneViewport, scene.slug]);
 
   useEffect(() => {
     const updateSceneViewport = () => {
@@ -649,8 +696,28 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       }
 
       sceneViewportRef.current = nextViewport;
-      setVideoReady(false);
       setSceneViewport(nextViewport);
+
+      const visibleViewport = visibleSceneViewportRef.current;
+      const nextVideo = videoElementsRef.current[nextViewport];
+
+      if (!visibleViewport) {
+        visibleSceneViewportRef.current = nextViewport;
+        setVideoReady(false);
+        setVisibleSceneViewport(nextViewport);
+        return;
+      }
+
+      if (
+        visibleViewport !== nextViewport &&
+        nextVideo &&
+        nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
+        syncVideoElementTime(nextVideo);
+        void nextVideo.play().catch(() => undefined);
+        visibleSceneViewportRef.current = nextViewport;
+        setVisibleSceneViewport(nextViewport);
+      }
     };
 
     const animationFrame = window.requestAnimationFrame(updateSceneViewport);
@@ -662,7 +729,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       window.removeEventListener("resize", updateSceneViewport);
       window.removeEventListener("orientationchange", updateSceneViewport);
     };
-  }, []);
+  }, [syncVideoElementTime]);
 
   useEffect(() => {
     return () => {
@@ -713,15 +780,21 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setIsExiting(false);
   }
 
-  const getSyncedTime = useCallback(
-    () => {
-      const offset = scene.video.sync?.epochOffsetSeconds ?? 0;
-      const duration = scene.video.durationSeconds;
+  function handleVariantVideoReady(viewport: SceneViewport) {
+    if (sceneViewportRef.current !== viewport) {
+      return;
+    }
 
-      return (((Date.now() / 1000 + offset) % duration) + duration) % duration;
-    },
-    [scene.video.durationSeconds, scene.video.sync?.epochOffsetSeconds],
-  );
+    const video = videoElementsRef.current[viewport];
+
+    if (video) {
+      syncVideoElementTime(video);
+    }
+
+    visibleSceneViewportRef.current = viewport;
+    setVisibleSceneViewport(viewport);
+    markVideoReady();
+  }
 
   const getSyncedPlaylistPosition = useCallback(
     (): SyncedPlaylistPosition | null => {
@@ -914,6 +987,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     });
   }, [
     activeVideoSource.src,
+    sceneViewport,
     setVideoAudioLevel,
     videoAudioActive,
     videoVolume,
@@ -938,6 +1012,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     attachVideoAudio,
     detachVideoAudio,
     hasEntered,
+    sceneViewport,
     videoVolume,
   ]);
 
@@ -1660,39 +1735,53 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             )}
             style={stageTransformStyle}
           >
-            <video
-              key={activeVideoSource.src}
-              ref={videoRef}
-              className={classNames(
-                "absolute inset-0 z-0 h-full w-full object-cover",
-                devOutline(devBorders, 4),
-              )}
-              crossOrigin="anonymous"
-              src={activeVideoSource.src}
-              autoPlay
-              muted={!hasEntered}
-              loop
-              playsInline
-              preload="metadata"
-              aria-label={`${scene.title} room video`}
-              onLoadedMetadata={(event) => {
-                event.currentTarget.volume = videoVolume;
+            {sceneViewport
+              ? sceneViewports.map((viewport) => {
+                  const videoSource = getSceneVideoSource(scene, viewport);
+                  const isVisible = viewport === resolvedSceneViewport;
 
-                if (syncedPlayback) {
-                  event.currentTarget.currentTime = getSyncedTime();
-                } else if (lastVideoTimeRef.current > 0) {
-                  event.currentTarget.currentTime = Math.min(
-                    lastVideoTimeRef.current,
-                    Math.max(event.currentTarget.duration - 0.1, 0),
+                  return (
+                    <video
+                      key={`${scene.slug}:${viewport}`}
+                      ref={(element) => {
+                        videoElementsRef.current[viewport] = element;
+
+                        if (isVisible) {
+                          videoRef.current = element;
+                        }
+                      }}
+                      className={classNames(
+                        "absolute inset-0 z-0 h-full w-full object-cover",
+                        isVisible ? "opacity-100" : "opacity-0",
+                        devOutline(devBorders, 4),
+                      )}
+                      crossOrigin="anonymous"
+                      src={videoSource.src}
+                      autoPlay
+                      muted={!hasEntered || !isVisible}
+                      loop
+                      playsInline
+                      preload="auto"
+                      aria-hidden={!isVisible}
+                      aria-label={
+                        isVisible ? `${scene.title} room video` : undefined
+                      }
+                      onLoadedMetadata={(event) => {
+                        event.currentTarget.volume = isVisible ? videoVolume : 0;
+                        syncVideoElementTime(event.currentTarget);
+                      }}
+                      onTimeUpdate={(event) => {
+                        if (isVisible) {
+                          lastVideoTimeRef.current =
+                            event.currentTarget.currentTime;
+                        }
+                      }}
+                      onLoadedData={() => handleVariantVideoReady(viewport)}
+                      onCanPlay={() => handleVariantVideoReady(viewport)}
+                    />
                   );
-                }
-              }}
-              onTimeUpdate={(event) => {
-                lastVideoTimeRef.current = event.currentTarget.currentTime;
-              }}
-              onLoadedData={markVideoReady}
-              onCanPlay={markVideoReady}
-            />
+                })
+              : null}
 
             {scene.ticker ? (
               <SceneTickerOverlay ticker={scene.ticker} devBorders={devBorders} />
@@ -2086,7 +2175,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             >
               <p>Scene: {scene.slug}</p>
               <p>
-                Video: {sceneViewport} / {activeVideoSource.width}x
+                Video: {sceneViewport ?? "detecting"} / {activeVideoSource.width}x
                 {activeVideoSource.height} / {scene.video.durationSeconds.toFixed(3)}s
               </p>
               <p>Borders: {devBorders ? "visible" : "hidden"}</p>
