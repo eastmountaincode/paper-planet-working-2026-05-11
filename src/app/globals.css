@@ -65,5 +65,73 @@ a {
 }
 
 .paper-planet-wave-letter {
-  animation: paper-planet-letter-wave 3.2s ease-in-out infinite;
+  animation: paper-planet-letter-wave 4s ease-in-out infinite;
+  backface-visibility: hidden;
+  transform-origin: 50% 60%;
+  will-change: transform;
+}
+
+@keyframes paper-planet-center-ticker {
+  0% {
+    opacity: 0;
+    transform: translate3d(110vw, -50%, 0) rotate(-1.4deg);
+  }
+
+  7% {
+    opacity: 1;
+  }
+
+  28% {
+    opacity: 1;
+  }
+
+  30%,
+  100% {
+    opacity: 1;
+    transform: translate3d(-105%, -50%, 0) rotate(1deg);
+  }
+}
+
+.paper-planet-center-ticker {
+  animation-name: paper-planet-center-ticker;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+
+@keyframes paper-planet-metadata-toast {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0.9rem, 0);
+  }
+
+  12%,
+  78% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0.45rem, 0);
+  }
+}
+
+.paper-planet-metadata-toast {
+  animation: paper-planet-metadata-toast 6.2s ease both;
+}
+
+.admin-cursors a[href],
+.admin-cursors button:not(:disabled):not([draggable="true"]),
+.admin-cursors input[type="checkbox"]:not(:disabled),
+.admin-cursors input[type="file"]:not(:disabled),
+.admin-cursors input[type="radio"]:not(:disabled),
+.admin-cursors select:not(:disabled) {
+  cursor: pointer;
+}
+
+.admin-cursors button:disabled,
+.admin-cursors input:disabled,
+.admin-cursors select:disabled {
+  cursor: not-allowed;
 }

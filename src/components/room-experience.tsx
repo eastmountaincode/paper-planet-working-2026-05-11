@@ -10,8 +10,19 @@ import {
   useState,
 } from "react";
 import { useEntryState } from "@/components/entry-provider";
-import type { Hotspot, Scene, SceneSlug, SceneTicker } from "@/lib/scenes";
-import { createScenes, sceneSlugs, scenes as staticScenes } from "@/lib/scenes";
+import type {
+  Hotspot,
+  Scene,
+  SceneSlug,
+  SceneTicker,
+  SceneViewport,
+} from "@/lib/scenes";
+import {
+  createScenes,
+  getSceneVideoSource,
+  sceneSlugs,
+  scenes as staticScenes,
+} from "@/lib/scenes";
 import {
   getInitialPlaylistPosition,
   getScenePlaylistPlayback,
@@ -49,6 +60,19 @@ type StageGesture = {
   startCenter: StagePointer | null;
   startDistance: number;
   startTransform: StageTransform;
+};
+
+type PlaylistTrack = NonNullable<Scene["playlist"]>["tracks"][number];
+
+type PlaylistMetadataToast = {
+  id: number;
+  title: string;
+  album?: string;
+  frame: PlaylistMetadataFrame;
+};
+
+type PlaylistMetadataFrame = {
+  path: string;
 };
 
 const devOutlineClasses = [
@@ -108,6 +132,16 @@ function sortHotspotsByZOrder(hotspots: Hotspot[]) {
   );
 }
 
+function getPreferredSceneViewport(): SceneViewport {
+  if (typeof window === "undefined") {
+    return "desktop";
+  }
+
+  return window.innerWidth < 768 || window.innerWidth / window.innerHeight < 0.75
+    ? "mobile"
+    : "desktop";
+}
+
 function isExpectedMediaInterruption(error: unknown) {
   if (!(error instanceof DOMException)) {
     return false;
@@ -124,7 +158,20 @@ function getMediaErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+type BottomTicker = Extract<SceneTicker, { position: "bottom" }>;
+type CenterTicker = Extract<SceneTicker, { position: "center" }>;
+
 type SyncedTickerProps = {
+  ticker: BottomTicker;
+  devBorders: boolean;
+};
+
+type CenterTickerProps = {
+  ticker: CenterTicker;
+  devBorders: boolean;
+};
+
+type SceneTickerOverlayProps = {
   ticker: SceneTicker;
   devBorders: boolean;
 };
@@ -136,6 +183,7 @@ const DEFAULT_STAGE_TRANSFORM: StageTransform = { scale: 1, x: 0, y: 0 };
 const MAX_STAGE_SCALE = 3;
 const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
+const PLAYLIST_METADATA_TOAST_MS = 6200;
 
 type NativeGestureEvent = Event & {
   clientX?: number;
@@ -216,6 +264,76 @@ function getNormalizedWheelDelta(event: WheelEvent) {
   };
 }
 
+function formatPlaylistTrackDisplayTitle(track: PlaylistTrack) {
+  return track.album ? `${track.album} - ${track.title}` : track.title;
+}
+
+function hashString(value: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function createSeededRandom(seed: number) {
+  let value = seed || 1;
+
+  return () => {
+    value += 0x6d2b79f5;
+    let next = value;
+    next = Math.imul(next ^ (next >>> 15), next | 1);
+    next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+
+    return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createMetadataFramePath(seed: number) {
+  const random = createSeededRandom(seed);
+  const jitter = (amount: number) => (random() * 2 - 1) * amount;
+  const points = [
+    { x: 3 + jitter(1.7), y: 9 + jitter(2.1) },
+    { x: 17 + jitter(2.8), y: 5 + jitter(1.6) },
+    { x: 38 + jitter(2.4), y: 4 + jitter(1.4) },
+    { x: 62 + jitter(2.4), y: 4 + jitter(1.4) },
+    { x: 84 + jitter(2.8), y: 5 + jitter(1.6) },
+    { x: 97 + jitter(1.7), y: 9 + jitter(2.1) },
+    { x: 99 + jitter(1.4), y: 28 + jitter(2.8) },
+    { x: 98 + jitter(1.5), y: 56 + jitter(2.8) },
+    { x: 97 + jitter(1.7), y: 90 + jitter(2.1) },
+    { x: 82 + jitter(2.8), y: 96 + jitter(1.7) },
+    { x: 58 + jitter(2.4), y: 97 + jitter(1.3) },
+    { x: 38 + jitter(2.4), y: 97 + jitter(1.3) },
+    { x: 16 + jitter(2.8), y: 96 + jitter(1.7) },
+    { x: 3 + jitter(1.7), y: 90 + jitter(2.1) },
+    { x: 1 + jitter(1.4), y: 61 + jitter(2.8) },
+    { x: 2 + jitter(1.5), y: 31 + jitter(2.8) },
+  ];
+  const midpoint = (first: (typeof points)[number], second: (typeof points)[number]) => ({
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  });
+  const start = midpoint(points.at(-1) ?? points[0], points[0]);
+  const curves = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const end = midpoint(point, next);
+
+    return `Q ${point.x.toFixed(2)} ${point.y.toFixed(2)} ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+  });
+
+  return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} ${curves.join(" ")} Z`;
+}
+
+function createPlaylistMetadataFrame(seedText: string): PlaylistMetadataFrame {
+  return {
+    path: createMetadataFramePath(hashString(seedText)),
+  };
+}
+
 function TickerText({ text }: { text: string }) {
   const characters = Array.from(text);
 
@@ -233,6 +351,10 @@ function TickerText({ text }: { text: string }) {
       ))}
     </>
   );
+}
+
+function CenterTickerText({ text }: { text: string }) {
+  return <TickerText text={text} />;
 }
 
 function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
@@ -325,9 +447,47 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
   );
 }
 
+function CenterTicker({ ticker, devBorders }: CenterTickerProps) {
+  const messageInterval =
+    ticker.messageIntervalSeconds ?? ticker.cycleSeconds / ticker.messages.length;
+
+  return (
+    <div
+      className={classNames(
+        "pointer-events-none absolute inset-x-0 top-[58%] z-20 h-[34dvh] min-h-36 -translate-y-1/2 overflow-hidden text-white",
+        devOutline(devBorders, 5),
+      )}
+      aria-label={ticker.messages.join(" ")}
+    >
+      {ticker.messages.map((message, index) => (
+        <div
+          key={message}
+          className="paper-planet-center-ticker absolute left-0 top-1/2 w-max -translate-y-1/2 whitespace-nowrap font-paper-planet text-[clamp(2.6rem,9.2vw,7.4rem)] leading-none text-white"
+          style={{
+            animationDelay: `${index * messageInterval}s`,
+            animationDuration: `${ticker.cycleSeconds}s`,
+          }}
+          aria-hidden={index > 0}
+        >
+          <CenterTickerText text={message} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SceneTickerOverlay({ ticker, devBorders }: SceneTickerOverlayProps) {
+  return ticker.position === "center" ? (
+    <CenterTicker ticker={ticker} devBorders={devBorders} />
+  ) : (
+    <SyncedTicker ticker={ticker} devBorders={devBorders} />
+  );
+}
+
 export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [runtimeScenes, setRuntimeScenes] = useState(staticScenes);
   const [scene, setActiveScene] = useState(initialScene);
+  const [sceneViewport, setSceneViewport] = useState<SceneViewport>("desktop");
   const searchParams = useSearchParams();
   const {
     attachVideoAudio,
@@ -346,6 +506,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     videoGain,
   } = useEntryState();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastVideoTimeRef = useRef(0);
+  const sceneViewportRef = useRef<SceneViewport>("desktop");
   const stageRef = useRef<HTMLDivElement>(null);
   const sceneSlugRef = useRef(initialScene.slug);
   const debugHotspots =
@@ -361,8 +523,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playlistTrackIndex, setPlaylistTrackIndex] = useState(0);
   const [playlistStartTime, setPlaylistStartTime] = useState(0);
+  const [metadataToast, setMetadataToast] =
+    useState<PlaylistMetadataToast | null>(null);
   const fadeOutInProgressRef = useRef(false);
   const navigationIdRef = useRef(0);
+  const metadataToastIdRef = useRef(0);
+  const metadataToastTimeoutRef = useRef<number | null>(null);
+  const lastMetadataToastKeyRef = useRef<string | null>(null);
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
@@ -381,9 +548,23 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     transform: StageTransform;
   } | null>(null);
 
+  const activeVideoSource = useMemo(
+    () => getSceneVideoSource(scene, sceneViewport),
+    [scene, sceneViewport],
+  );
+  const activeHotspots = scene.hotspotVariants?.[sceneViewport] ?? scene.hotspots;
   const aspectRatio = useMemo(
-    () => `${scene.video.width} / ${scene.video.height}`,
-    [scene.video.height, scene.video.width],
+    () => `${activeVideoSource.width} / ${activeVideoSource.height}`,
+    [activeVideoSource.height, activeVideoSource.width],
+  );
+  const stageFrameStyle = useMemo(
+    () => ({
+      aspectRatio,
+      maxWidth: `min(100%, calc((100dvh - 2.5rem) * ${
+        activeVideoSource.width / activeVideoSource.height
+      }))`,
+    }),
+    [activeVideoSource.height, activeVideoSource.width, aspectRatio],
   );
 
   const syncedPlayback = scene.video.sync?.enabled ?? false;
@@ -406,8 +587,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     !playlistAudioMuted &&
     !audioTransitionMuted;
   const orderedHotspots = useMemo(
-    () => sortHotspotsByZOrder(scene.hotspots),
-    [scene.hotspots],
+    () => sortHotspotsByZOrder(activeHotspots),
+    [activeHotspots],
   );
   const transitionActive = isExiting || !videoReady;
   const stageTransformStyle = useMemo(
@@ -417,6 +598,40 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [stageTransform.scale, stageTransform.x, stageTransform.y],
   );
 
+  const showMetadataToast = useCallback(
+    (title: string, album?: string) => {
+      const nextId = metadataToastIdRef.current + 1;
+      metadataToastIdRef.current = nextId;
+      setMetadataToast({
+        id: nextId,
+        title,
+        ...(album ? { album } : {}),
+        frame: createPlaylistMetadataFrame(`${nextId}:${title}:${album ?? ""}`),
+      });
+
+      if (metadataToastTimeoutRef.current) {
+        window.clearTimeout(metadataToastTimeoutRef.current);
+      }
+
+      metadataToastTimeoutRef.current = window.setTimeout(() => {
+        setMetadataToast((current) => (current?.id === nextId ? null : current));
+        metadataToastTimeoutRef.current = null;
+      }, PLAYLIST_METADATA_TOAST_MS);
+    },
+    [],
+  );
+
+  const showPlaylistMetadataToast = useCallback(
+    (track: PlaylistTrack | null = activePlaylistTrack) => {
+      if (!track) {
+        return;
+      }
+
+      showMetadataToast(track.title, track.album);
+    },
+    [activePlaylistTrack, showMetadataToast],
+  );
+
   useEffect(() => {
     stageTransformRef.current = stageTransform;
   }, [stageTransform]);
@@ -424,6 +639,38 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     sceneSlugRef.current = scene.slug;
   }, [scene.slug]);
+
+  useEffect(() => {
+    const updateSceneViewport = () => {
+      const nextViewport = getPreferredSceneViewport();
+
+      if (sceneViewportRef.current === nextViewport) {
+        return;
+      }
+
+      sceneViewportRef.current = nextViewport;
+      setVideoReady(false);
+      setSceneViewport(nextViewport);
+    };
+
+    const animationFrame = window.requestAnimationFrame(updateSceneViewport);
+    window.addEventListener("resize", updateSceneViewport);
+    window.addEventListener("orientationchange", updateSceneViewport);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", updateSceneViewport);
+      window.removeEventListener("orientationchange", updateSceneViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (metadataToastTimeoutRef.current) {
+        window.clearTimeout(metadataToastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isCanceled = false;
@@ -666,7 +913,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       }
     });
   }, [
-    scene.video.src,
+    activeVideoSource.src,
     setVideoAudioLevel,
     videoAudioActive,
     videoVolume,
@@ -686,7 +933,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       detachVideoAudio(video);
     };
-  }, [attachVideoAudio, detachVideoAudio, hasEntered, scene.video.src, videoVolume]);
+  }, [
+    activeVideoSource.src,
+    attachVideoAudio,
+    detachVideoAudio,
+    hasEntered,
+    videoVolume,
+  ]);
 
   useEffect(() => {
     if (!playlistEnabled || playlistTracks.length === 0) {
@@ -752,6 +1005,33 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     playlistTracks.length,
     playlistVolume,
     scene.slug,
+  ]);
+
+  useEffect(() => {
+    if (!playlistAudioActive || !activePlaylistTrack) {
+      return;
+    }
+
+    const toastKey = `${scene.slug}:${playlistTrackIndex}:${activePlaylistTrack.src}`;
+    const previousToastKey = lastMetadataToastKeyRef.current;
+
+    lastMetadataToastKeyRef.current = toastKey;
+
+    if (
+      !previousToastKey ||
+      previousToastKey === toastKey ||
+      !previousToastKey.startsWith(`${scene.slug}:`)
+    ) {
+      return;
+    }
+
+    showPlaylistMetadataToast(activePlaylistTrack);
+  }, [
+    activePlaylistTrack,
+    playlistAudioActive,
+    playlistTrackIndex,
+    scene.slug,
+    showPlaylistMetadataToast,
   ]);
 
   useEffect(() => {
@@ -930,6 +1210,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       stageGestureRef.current.startCenter = null;
       stageGestureRef.current.startDistance = 0;
       stageGestureRef.current.startTransform = DEFAULT_STAGE_TRANSFORM;
+      lastVideoTimeRef.current = 0;
       setStageTransform(DEFAULT_STAGE_TRANSFORM);
       setActiveScene(targetScene);
       setPlaylistTrackIndex(position.trackIndex);
@@ -1363,10 +1644,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         <div
           ref={stageRef}
           className={classNames(
-            "relative w-full max-w-[min(100%,calc(100dvh-2.5rem))] touch-none overflow-hidden bg-black",
+            "relative w-full touch-none overflow-hidden bg-black",
             devOutline(devBorders, 2),
           )}
-          style={{ aspectRatio }}
+          style={stageFrameStyle}
           onPointerDown={handleStagePointerDown}
           onPointerMove={handleStagePointerMove}
           onPointerUp={handleStagePointerEnd}
@@ -1380,14 +1661,14 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             style={stageTransformStyle}
           >
             <video
-              key={scene.video.src}
+              key={activeVideoSource.src}
               ref={videoRef}
               className={classNames(
                 "absolute inset-0 z-0 h-full w-full object-cover",
                 devOutline(devBorders, 4),
               )}
               crossOrigin="anonymous"
-              src={scene.video.src}
+              src={activeVideoSource.src}
               autoPlay
               muted={!hasEntered}
               loop
@@ -1399,14 +1680,22 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
                 if (syncedPlayback) {
                   event.currentTarget.currentTime = getSyncedTime();
+                } else if (lastVideoTimeRef.current > 0) {
+                  event.currentTarget.currentTime = Math.min(
+                    lastVideoTimeRef.current,
+                    Math.max(event.currentTarget.duration - 0.1, 0),
+                  );
                 }
+              }}
+              onTimeUpdate={(event) => {
+                lastVideoTimeRef.current = event.currentTarget.currentTime;
               }}
               onLoadedData={markVideoReady}
               onCanPlay={markVideoReady}
             />
 
             {scene.ticker ? (
-              <SyncedTicker ticker={scene.ticker} devBorders={devBorders} />
+              <SceneTickerOverlay ticker={scene.ticker} devBorders={devBorders} />
             ) : null}
 
             <svg
@@ -1548,6 +1837,45 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         </div>
       ) : null}
 
+      {metadataToast ? (
+        <div
+          key={metadataToast.id}
+          className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[45] flex justify-center sm:bottom-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="paper-planet-metadata-toast font-paper-planet relative isolate max-w-[min(42rem,calc(100vw-1.5rem))] px-5 py-2.5 text-center text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.68)] sm:px-6">
+            <svg
+              className="pointer-events-none absolute -inset-1 -z-10 h-[calc(100%+0.5rem)] w-[calc(100%+0.5rem)] overflow-visible"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                d={metadataToast.frame.path}
+                fill="rgba(0, 0, 0, 0.86)"
+                stroke="rgba(255, 255, 255, 0.78)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.25"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            <p className="text-[1.55rem] leading-[0.9] text-white/62 sm:text-[1.95rem]">
+              Now playing
+            </p>
+            <p className="text-balance break-words text-[clamp(1.9rem,6.4vw,3rem)] leading-[0.62] text-white">
+              {metadataToast.title}
+            </p>
+            {metadataToast.album ? (
+              <p className="mt-0.5 text-balance break-words text-[1.45rem] leading-[0.68] text-white/72 sm:text-[1.85rem]">
+                album: {metadataToast.album}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {devPanelOpen ? (
         <aside
           className={classNames(
@@ -1666,10 +1994,68 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                 </div>
               ) : null}
               {playlistEnabled && activePlaylistTrack ? (
-                <p className="text-white/80">
-                  Now playing: {playlistTrackIndex + 1}/{playlistTracks.length}{" "}
-                  {activePlaylistTrack.title}
-                </p>
+                <div className="grid gap-1">
+                  <p className="text-white/80">
+                    Now playing: {playlistTrackIndex + 1}/{playlistTracks.length}{" "}
+                    {formatPlaylistTrackDisplayTitle(activePlaylistTrack)}
+                  </p>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showPlaylistMetadataToast(activePlaylistTrack)
+                      }
+                      className={classNames(
+                        "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                        devOutline(devBorders, 3),
+                      )}
+                    >
+                      Show metadata
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showMetadataToast(
+                          "The Extraordinary Paper Planet Construction Parade",
+                          activePlaylistTrack.album,
+                        )
+                      }
+                      className={classNames(
+                        "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                        devOutline(devBorders, 3),
+                      )}
+                    >
+                      Long title
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showMetadataToast(
+                          activePlaylistTrack.title,
+                          "The Complete Songs From The Long Walk Through Paper Planet",
+                        )
+                      }
+                      className={classNames(
+                        "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                        devOutline(devBorders, 3),
+                      )}
+                    >
+                      Long album
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showMetadataToast("Conito's Way", "Alpaulccino")
+                      }
+                      className={classNames(
+                        "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                        devOutline(devBorders, 3),
+                      )}
+                    >
+                      Conito&apos;s
+                    </button>
+                  </div>
+                </div>
               ) : null}
               <p className="text-white/55">
                 Playlist state: {playlistStatus.lastEvent} /{" "}
@@ -1700,8 +2086,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             >
               <p>Scene: {scene.slug}</p>
               <p>
-                Video: {scene.video.width}x{scene.video.height} /{" "}
-                {scene.video.durationSeconds.toFixed(3)}s
+                Video: {sceneViewport} / {activeVideoSource.width}x
+                {activeVideoSource.height} / {scene.video.durationSeconds.toFixed(3)}s
               </p>
               <p>Borders: {devBorders ? "visible" : "hidden"}</p>
               <p>

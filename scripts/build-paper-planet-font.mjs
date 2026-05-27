@@ -37,7 +37,7 @@ const specimenText = [
   "Pack my box with five dozen liquor jugs.",
   "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
   "abcdefghijklmnopqrstuvwxyz",
-  "1234567890 ! ? . , : ; ' \" ( ) + - = / < > @ # $",
+  "1234567890 ! ? . , : ; ' \" ( ) + - = / \\ < > @ # $",
 ].join("\n");
 
 const nameByChar = {
@@ -56,6 +56,7 @@ const nameByChar = {
   "-": "hyphen",
   "=": "equals",
   "/": "slash",
+  "\\": "backslash",
   "<": "less-than",
   ">": "greater-than",
   "@": "at",
@@ -82,7 +83,7 @@ const sheets = [
     rows: [
       { y: 347, glyphs: at([214, 407, 586, 763, 941, 1134], "123456") },
       { y: 590, glyphs: at([211, 407, 592, 773, 951, 1139], "7890+-") },
-      { y: 825, glyphs: at([215, 409, 592, 771, 965, 1143, 1330, 1511], '=/<>@#$') },
+      { y: 825, glyphs: at([215, 409, 592, 771, 965, 1143, 1330, 1511], "=/\\<>@#$") },
     ],
   },
 ];
@@ -592,22 +593,52 @@ function tuneSvgFontMetrics(svgFont) {
 }
 
 function getGlyphMetrics(glyphName) {
+  if (glyphName === "apostrophe") {
+    return {
+      left: 28,
+      right: 34,
+      scale: 0.46,
+      yOffset: 300,
+      minAdvance: 120,
+    };
+  }
+
+  if (glyphName === "quote") {
+    return {
+      left: 28,
+      right: 36,
+      scale: 0.52,
+      yOffset: 275,
+      minAdvance: 185,
+    };
+  }
+
   if (glyphName === "period") {
     return {
       left: 34,
-      right: 30,
-      scale: 0.66,
-      yOffset: -62,
+      right: 40,
+      scale: 0.42,
+      yOffset: -85,
       minAdvance: 125,
     };
   }
 
-  if (["comma", "colon", "semicolon"].includes(glyphName)) {
+  if (glyphName === "comma") {
+    return {
+      left: 34,
+      right: 40,
+      scale: 0.48,
+      yOffset: -80,
+      minAdvance: 130,
+    };
+  }
+
+  if (["colon", "semicolon"].includes(glyphName)) {
     return {
       left: 34,
       right: 30,
-      scale: 0.82,
-      yOffset: glyphName === "comma" ? -34 : -16,
+      scale: 0.68,
+      yOffset: -40,
       minAdvance: 150,
     };
   }
@@ -615,12 +646,11 @@ function getGlyphMetrics(glyphName) {
   if (
     [
       "exclamation",
-      "apostrophe",
-      "quote",
       "paren-left",
       "paren-right",
       "hyphen",
       "slash",
+      "backslash",
     ].includes(glyphName)
   ) {
     return {

@@ -2,6 +2,9 @@ import sceneHotspotsData from "./scene-hotspots.json";
 import scenePlaylistsData from "./scene-playlists.json";
 
 export type SceneSlug = "construction" | "hq";
+export type SceneViewport = "desktop" | "mobile";
+
+export const sceneViewports: SceneViewport[] = ["desktop", "mobile"];
 
 export type PercentPoint = {
   x: number;
@@ -55,22 +58,33 @@ export type SceneIconOverlay = {
   action: HotspotAction;
 };
 
-export type SceneTicker = {
-  text: string;
-  position: "bottom";
-  speedPixelsPerSecond: number;
-  epochOffsetSeconds?: number;
+export type SceneTicker =
+  | {
+      text: string;
+      position: "bottom";
+      speedPixelsPerSecond: number;
+      epochOffsetSeconds?: number;
+    }
+  | {
+      messages: string[];
+      position: "center";
+      cycleSeconds: number;
+      messageIntervalSeconds?: number;
+    };
+
+export type SceneVideoSource = {
+  src: string;
+  width: number;
+  height: number;
+  sourceFile: string;
 };
 
 export type Scene = {
   slug: SceneSlug;
   title: string;
-  video: {
-    src: string;
-    width: number;
-    height: number;
+  video: SceneVideoSource & {
+    sources?: Record<SceneViewport, SceneVideoSource>;
     durationSeconds: number;
-    sourceFile: string;
     sync?: {
       enabled: boolean;
       epochOffsetSeconds?: number;
@@ -91,11 +105,15 @@ export type Scene = {
     };
     tracks: {
       title: string;
+      album?: string;
+      sourceFile: string;
+      key: string;
       src: string;
       durationSeconds: number;
     }[];
   };
   hotspots: Hotspot[];
+  hotspotVariants?: Record<SceneViewport, Hotspot[]>;
   overlays?: SceneIconOverlay[];
   ticker?: SceneTicker;
 };
@@ -119,22 +137,72 @@ export type ScenePlaylistData = {
 };
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
-const roomVideoVersion = "20260525-cors";
+const roomVideoVersion = "20260527-responsive-videos";
 
 const mediaUrl = (path: string) =>
   `${mediaBaseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 
 const roomVideoUrl = (path: string) => mediaUrl(`${path}?v=${roomVideoVersion}`);
 
-const sceneHotspots = sceneHotspotsData as Record<SceneSlug, Hotspot[]>;
+type SceneHotspotEntry =
+  | Hotspot[]
+  | Partial<Record<SceneViewport, Hotspot[]>>;
+
+const sceneHotspots = sceneHotspotsData as Record<SceneSlug, SceneHotspotEntry>;
 const scenePlaylists = scenePlaylistsData as Record<SceneSlug, ScenePlaylistData>;
+
+function getSceneHotspotVariants(
+  slug: SceneSlug,
+): Record<SceneViewport, Hotspot[]> {
+  const hotspotEntry = sceneHotspots[slug];
+
+  if (Array.isArray(hotspotEntry)) {
+    return {
+      desktop: hotspotEntry,
+      mobile: hotspotEntry,
+    };
+  }
+
+  return {
+    desktop: hotspotEntry.desktop ?? hotspotEntry.mobile ?? [],
+    mobile: hotspotEntry.mobile ?? hotspotEntry.desktop ?? [],
+  };
+}
+
+function createSceneVideoSource(
+  path: string,
+  width: number,
+  height: number,
+  sourceFile: string,
+): SceneVideoSource {
+  return {
+    src: roomVideoUrl(path),
+    width,
+    height,
+    sourceFile,
+  };
+}
+
+export function getSceneVideoSource(
+  scene: Scene,
+  viewport: SceneViewport,
+): SceneVideoSource {
+  return scene.video.sources?.[viewport] ?? scene.video;
+}
+
+function formatTrackTitle(title: string) {
+  return title.replace(/([A-Za-z])_s\b/g, "$1's");
+}
 
 function getPlaylistTracks(
   playlists: Record<SceneSlug, ScenePlaylistData>,
   slug: SceneSlug,
 ) {
   return playlists[slug].tracks.map((track) => ({
-    title: track.album ? `${track.album} - ${track.title}` : track.title,
+    title: formatTrackTitle(track.title),
+    ...(track.album ? { album: track.album } : {}),
+    sourceFile: track.sourceFile,
+    key: track.key,
     src: mediaUrl(track.src),
     durationSeconds: track.durationSeconds,
   }));
@@ -143,17 +211,45 @@ function getPlaylistTracks(
 export function createScenes(
   playlists: Record<SceneSlug, ScenePlaylistData> = scenePlaylists,
 ): Record<SceneSlug, Scene> {
+  const constructionVideoSources = {
+    desktop: createSceneVideoSource(
+      "rooms/construction-desktop.mp4",
+      1080,
+      1080,
+      "assets/rooms-20260516/compressed/construction-desktop-1080-crf24.mp4",
+    ),
+    mobile: createSceneVideoSource(
+      "rooms/construction-mobile.mp4",
+      1080,
+      1920,
+      "assets/rooms-20260516/compressed/construction-mobile-1080x1920-crf24.mp4",
+    ),
+  };
+  const hqVideoSources = {
+    desktop: createSceneVideoSource(
+      "rooms/hq-desktop.mp4",
+      1080,
+      1080,
+      "assets/rooms-20260516/compressed/hq-desktop-1080-crf24.mp4",
+    ),
+    mobile: createSceneVideoSource(
+      "rooms/hq-mobile.mp4",
+      1080,
+      1920,
+      "assets/rooms-20260516/compressed/hq-mobile-1080x1920-crf24.mp4",
+    ),
+  };
+  const constructionHotspots = getSceneHotspotVariants("construction");
+  const hqHotspots = getSceneHotspotVariants("hq");
+
   return {
     construction: {
       slug: "construction",
       title: "Construction Zone",
       video: {
-        src: roomVideoUrl("rooms/construction.mp4"),
-        width: 1080,
-        height: 1080,
-        durationSeconds: 810.069,
-        sourceFile:
-          "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet Construction - V3.mp4",
+        ...constructionVideoSources.desktop,
+        sources: constructionVideoSources,
+        durationSeconds: 810.025,
         sync: {
           enabled: true,
         },
@@ -172,24 +268,23 @@ export function createScenes(
         },
         tracks: getPlaylistTracks(playlists, "construction"),
       },
-      hotspots: sceneHotspots.construction,
+      hotspots: constructionHotspots.desktop,
+      hotspotVariants: constructionHotspots,
       overlays: [],
       ticker: {
-        text: "Paper Planet Under Construction Coming Fall 2026",
-        position: "bottom",
-        speedPixelsPerSecond: 44,
+        messages: ["Paper Planet", "Under Construction", "Coming Fall 2026"],
+        position: "center",
+        cycleSeconds: 66,
+        messageIntervalSeconds: 24,
       },
     },
     hq: {
       slug: "hq",
       title: "Paper Planet HQ",
       video: {
-        src: roomVideoUrl("rooms/hq.mp4"),
-        width: 1080,
-        height: 1080,
-        durationSeconds: 237.205,
-        sourceFile:
-          "assets/Phase 1 - Construction Zone/ROOMS/Paper Planet HQ - V3.mp4",
+        ...hqVideoSources.desktop,
+        sources: hqVideoSources,
+        durationSeconds: 237.142,
         sync: {
           enabled: true,
         },
@@ -208,7 +303,8 @@ export function createScenes(
         },
         tracks: getPlaylistTracks(playlists, "hq"),
       },
-      hotspots: sceneHotspots.hq,
+      hotspots: hqHotspots.desktop,
+      hotspotVariants: hqHotspots,
       overlays: [
         {
           id: "hq-back-button",

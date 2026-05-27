@@ -15,10 +15,12 @@ import type {
   PercentPoint,
   PolygonHotspot,
   SceneSlug,
+  SceneViewport,
 } from "@/lib/scenes";
-import { sceneSlugs, scenes } from "@/lib/scenes";
+import { getSceneVideoSource, sceneSlugs, sceneViewports, scenes } from "@/lib/scenes";
 
 type HotspotTarget = SceneSlug | "enter";
+type HotspotTargetKey = "enter" | `${SceneSlug}:${SceneViewport}`;
 
 const hotspotTargets: HotspotTarget[] = ["enter", ...sceneSlugs];
 const targetLabels: Record<HotspotTarget, string> = {
@@ -33,31 +35,42 @@ const enterArtwork = {
   height: 868,
 };
 
-const editorStorageKey = (target: HotspotTarget) =>
-  `paper-planet-hotspots-v2:${target}`;
-const hiddenStorageKey = (target: HotspotTarget) =>
-  `paper-planet-hotspots-hidden:${target}`;
+const sceneTargetKeys = sceneSlugs.flatMap((slug) =>
+  sceneViewports.map((viewport) => `${slug}:${viewport}` as HotspotTargetKey),
+);
+const hotspotTargetKeys: HotspotTargetKey[] = ["enter", ...sceneTargetKeys];
+
+const getTargetKey = (
+  target: HotspotTarget,
+  viewport: SceneViewport,
+): HotspotTargetKey => (target === "enter" ? "enter" : `${target}:${viewport}`);
+
+const targetKeyToStorageSlug = (targetKey: HotspotTargetKey) =>
+  targetKey.replace(":", "-");
+
+const editorStorageKey = (targetKey: HotspotTargetKey) =>
+  `paper-planet-hotspots-v3:${targetKey}`;
+const hiddenStorageKey = (targetKey: HotspotTargetKey) =>
+  `paper-planet-hotspots-hidden-v2:${targetKey}`;
 const legacyDraftStorageKey = (target: HotspotTarget) =>
   `paper-planet-hotspot-drafts:${target}`;
 
-const emptyHotspotsByTarget = (): Record<HotspotTarget, Hotspot[]> => ({
-  enter: [],
-  construction: [],
-  hq: [],
-});
+const emptyHotspotsByTarget = () =>
+  Object.fromEntries(
+    hotspotTargetKeys.map((targetKey) => [targetKey, [] as Hotspot[]]),
+  ) as Record<HotspotTargetKey, Hotspot[]>;
 
-const emptyHiddenIdsByTarget = (): Record<HotspotTarget, string[]> => ({
-  enter: [],
-  construction: [],
-  hq: [],
-});
+const emptyHiddenIdsByTarget = () =>
+  Object.fromEntries(
+    hotspotTargetKeys.map((targetKey) => [targetKey, [] as string[]]),
+  ) as Record<HotspotTargetKey, string[]>;
 
 const percent = (value: number) => Number(value.toFixed(2));
 
 const pointsToString = (points: PercentPoint[]) =>
   points.map((point) => `${point.x},${point.y}`).join(" ");
 
-function createHotspotId(target: HotspotTarget) {
+function createHotspotId(targetKey: HotspotTargetKey) {
   const fallbackId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
@@ -67,12 +80,15 @@ function createHotspotId(target: HotspotTarget) {
       ? crypto.randomUUID().slice(0, 8)
       : fallbackId;
 
-  return `${target}-hotspot-${id}`;
+  return `${targetKeyToStorageSlug(targetKey)}-hotspot-${id}`;
 }
 
-function createPolygonHotspot(target: HotspotTarget): PolygonHotspot {
+function createPolygonHotspot(
+  target: HotspotTarget,
+  targetKey: HotspotTargetKey,
+): PolygonHotspot {
   return {
-    id: createHotspotId(target),
+    id: createHotspotId(targetKey),
     label: target === "enter" ? "Enter Paper Planet" : "New hotspot",
     zIndex: 0,
     shape: "polygon",
@@ -161,7 +177,10 @@ function hotspotSignature(hotspot: Hotspot) {
   });
 }
 
-function withUniqueHotspotIds(target: HotspotTarget, hotspots: Hotspot[]) {
+function withUniqueHotspotIds(
+  targetKey: HotspotTargetKey,
+  hotspots: Hotspot[],
+) {
   const ids = new Set<string>();
 
   return hotspots.map((hotspot) => {
@@ -172,7 +191,7 @@ function withUniqueHotspotIds(target: HotspotTarget, hotspots: Hotspot[]) {
 
     const nextHotspot = {
       ...hotspot,
-      id: createHotspotId(target),
+      id: createHotspotId(targetKey),
     } as Hotspot;
 
     ids.add(nextHotspot.id);
@@ -180,7 +199,7 @@ function withUniqueHotspotIds(target: HotspotTarget, hotspots: Hotspot[]) {
   });
 }
 
-function dedupeHotspots(target: HotspotTarget, hotspots: Hotspot[]) {
+function dedupeHotspots(targetKey: HotspotTargetKey, hotspots: Hotspot[]) {
   const signatureIndexes = new Map<string, number>();
   const uniqueHotspots: Hotspot[] = [];
 
@@ -205,7 +224,7 @@ function dedupeHotspots(target: HotspotTarget, hotspots: Hotspot[]) {
     uniqueHotspots.push(hotspot);
   }
 
-  return withUniqueHotspotIds(target, uniqueHotspots);
+  return withUniqueHotspotIds(targetKey, uniqueHotspots);
 }
 
 function parseStoredHotspots(value: string | null) {
@@ -241,7 +260,11 @@ function loadHotspotsByTarget() {
 
   hotspotsByTarget.enter = enterHotspots;
   for (const slug of sceneSlugs) {
-    hotspotsByTarget[slug] = scenes[slug].hotspots;
+    for (const viewport of sceneViewports) {
+      const targetKey = getTargetKey(slug, viewport);
+      hotspotsByTarget[targetKey] =
+        scenes[slug].hotspotVariants?.[viewport] ?? scenes[slug].hotspots;
+    }
   }
 
   return hotspotsByTarget;
@@ -254,22 +277,26 @@ function loadStoredHotspotsByTarget() {
     return hotspotsByTarget;
   }
 
-  for (const target of hotspotTargets) {
+  for (const targetKey of hotspotTargetKeys) {
     const storedHotspots = parseStoredHotspots(
-      window.localStorage.getItem(editorStorageKey(target)),
+      window.localStorage.getItem(editorStorageKey(targetKey)),
     );
 
     if (storedHotspots) {
-      hotspotsByTarget[target] = dedupeHotspots(target, storedHotspots);
+      hotspotsByTarget[targetKey] = dedupeHotspots(targetKey, storedHotspots);
       continue;
     }
 
-    const legacyDrafts = parseStoredHotspots(
-      window.localStorage.getItem(legacyDraftStorageKey(target)),
-    );
+    const [target] = targetKey.split(":") as [HotspotTarget, SceneViewport?];
+    const legacyDrafts =
+      targetKey === "enter" || targetKey.endsWith(":desktop")
+        ? parseStoredHotspots(
+            window.localStorage.getItem(legacyDraftStorageKey(target)),
+          )
+        : null;
 
-    hotspotsByTarget[target] = dedupeHotspots(target, [
-      ...hotspotsByTarget[target],
+    hotspotsByTarget[targetKey] = dedupeHotspots(targetKey, [
+      ...hotspotsByTarget[targetKey],
       ...(legacyDrafts ?? []),
     ]);
   }
@@ -288,9 +315,9 @@ function loadStoredHiddenIdsByTarget() {
     return hiddenIdsByTarget;
   }
 
-  for (const target of hotspotTargets) {
-    hiddenIdsByTarget[target] = parseStoredHiddenIds(
-      window.localStorage.getItem(hiddenStorageKey(target)),
+  for (const targetKey of hotspotTargetKeys) {
+    hiddenIdsByTarget[targetKey] = parseStoredHiddenIds(
+      window.localStorage.getItem(hiddenStorageKey(targetKey)),
     );
   }
 
@@ -610,6 +637,7 @@ function HotspotEditorSidebar({
 
 export function HotspotEditor() {
   const [target, setTarget] = useState<HotspotTarget>("enter");
+  const [viewport, setViewport] = useState<SceneViewport>("desktop");
   const [hotspotsByTarget, setHotspotsByTarget] = useState(loadHotspotsByTarget);
   const [hiddenIdsByTarget, setHiddenIdsByTarget] = useState(
     loadHiddenIdsByTarget,
@@ -625,8 +653,12 @@ export function HotspotEditor() {
   const isDrawingRef = useRef(false);
 
   const scene = target === "enter" ? null : scenes[target];
-  const hotspots = hotspotsByTarget[target];
-  const hiddenIds = hiddenIdsByTarget[target];
+  const targetKey = getTargetKey(target, viewport);
+  const activeVideoSource = scene
+    ? getSceneVideoSource(scene, viewport)
+    : null;
+  const hotspots = hotspotsByTarget[targetKey];
+  const hiddenIds = hiddenIdsByTarget[targetKey];
   const selectedHotspot =
     hotspots.find((hotspot) => hotspot.id === selectedId) ?? null;
   const orderedHotspots = useMemo(
@@ -641,9 +673,20 @@ export function HotspotEditor() {
     () =>
       target === "enter"
         ? `${enterArtwork.width} / ${enterArtwork.height}`
-        : `${scene?.video.width ?? 1} / ${scene?.video.height ?? 1}`,
-    [scene?.video.height, scene?.video.width, target],
+        : `${activeVideoSource?.width ?? 1} / ${activeVideoSource?.height ?? 1}`,
+    [activeVideoSource?.height, activeVideoSource?.width, target],
   );
+  const stageFrameStyle = useMemo(() => {
+    const frameAspect =
+      target === "enter"
+        ? enterArtwork.width / enterArtwork.height
+        : (activeVideoSource?.width ?? 1) / (activeVideoSource?.height ?? 1);
+
+    return {
+      aspectRatio,
+      maxWidth: `min(100%, calc((100dvh - 9rem) * ${frameAspect}))`,
+    };
+  }, [activeVideoSource?.height, activeVideoSource?.width, aspectRatio, target]);
 
   useEffect(() => {
     const loadStorageTimeout = window.setTimeout(() => {
@@ -663,10 +706,10 @@ export function HotspotEditor() {
     }
 
     window.localStorage.setItem(
-      editorStorageKey(target),
+      editorStorageKey(targetKey),
       JSON.stringify(hotspots),
     );
-  }, [hotspots, storageReady, target]);
+  }, [hotspots, storageReady, targetKey]);
 
   useEffect(() => {
     if (!storageReady) {
@@ -674,22 +717,22 @@ export function HotspotEditor() {
     }
 
     window.localStorage.setItem(
-      hiddenStorageKey(target),
+      hiddenStorageKey(targetKey),
       JSON.stringify(hiddenIds),
     );
-  }, [hiddenIds, storageReady, target]);
+  }, [hiddenIds, storageReady, targetKey]);
 
   function setTargetHotspots(
     updater: Hotspot[] | ((currentHotspots: Hotspot[]) => Hotspot[]),
   ) {
     setHotspotsByTarget((currentByTarget) => {
-      const currentHotspots = currentByTarget[target];
+      const currentHotspots = currentByTarget[targetKey];
       const nextHotspots =
         typeof updater === "function" ? updater(currentHotspots) : updater;
 
       return {
         ...currentByTarget,
-        [target]: dedupeHotspots(target, nextHotspots),
+        [targetKey]: dedupeHotspots(targetKey, nextHotspots),
       };
     });
   }
@@ -698,13 +741,13 @@ export function HotspotEditor() {
     updater: string[] | ((currentHiddenIds: string[]) => string[]),
   ) {
     setHiddenIdsByTarget((currentByTarget) => {
-      const currentHiddenIds = currentByTarget[target];
+      const currentHiddenIds = currentByTarget[targetKey];
       const nextHiddenIds =
         typeof updater === "function" ? updater(currentHiddenIds) : updater;
 
       return {
         ...currentByTarget,
-        [target]: Array.from(new Set(nextHiddenIds)),
+        [targetKey]: Array.from(new Set(nextHiddenIds)),
       };
     });
   }
@@ -762,7 +805,7 @@ export function HotspotEditor() {
         ? Math.max(...hotspots.map((hotspot) => getHotspotZIndex(hotspot))) + 1
         : 0;
     const nextHotspot: PolygonHotspot = {
-      ...createPolygonHotspot(target),
+      ...createPolygonHotspot(target, targetKey),
       points: normalizedPoints,
       zIndex: nextZIndex,
     };
@@ -834,7 +877,11 @@ export function HotspotEditor() {
   }
 
   function resetToAppHotspots() {
-    setTargetHotspots(target === "enter" ? enterHotspots : scenes[target].hotspots);
+    setTargetHotspots(
+      target === "enter"
+        ? enterHotspots
+        : (scenes[target].hotspotVariants?.[viewport] ?? scenes[target].hotspots),
+    );
     setTargetHiddenIds([]);
     setSelectedId(null);
     setStatus("Reset this target to the hotspots currently saved in the app.");
@@ -891,6 +938,7 @@ export function HotspotEditor() {
       },
       body: JSON.stringify({
         target,
+        ...(target === "enter" ? {} : { variant: viewport }),
         hotspots,
       }),
     });
@@ -977,7 +1025,7 @@ export function HotspotEditor() {
   }
 
   return (
-    <main className="h-dvh overflow-hidden bg-black text-white">
+    <main className="admin-cursors h-dvh overflow-hidden bg-black text-white">
       <div className="grid h-dvh w-full grid-rows-[minmax(0,1fr)_minmax(18rem,42dvh)] gap-px overflow-hidden bg-neutral-800 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-1">
         <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overscroll-contain bg-black p-4">
           <nav className="flex flex-wrap items-center justify-between gap-3">
@@ -987,31 +1035,55 @@ export function HotspotEditor() {
             >
               Paper Planet Hotspots
             </Link>
-            <label className="flex items-center gap-2 text-sm text-white/70">
-              Target
-              <select
-                value={target}
-                onChange={(event) => {
-                  setTarget(event.target.value as HotspotTarget);
-                  setSelectedId(null);
-                  setActivePoints([]);
-                  cancelDrawing();
-                  setStatus("");
-                }}
-                className="border border-white/25 bg-black px-3 py-2 text-white outline-none focus:border-white"
-              >
-                {hotspotTargets.map((slug) => (
-                  <option key={slug} value={slug}>
-                    {targetLabels[slug]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-white/70">
+                Target
+                <select
+                  value={target}
+                  onChange={(event) => {
+                    setTarget(event.target.value as HotspotTarget);
+                    setSelectedId(null);
+                    setActivePoints([]);
+                    cancelDrawing();
+                    setStatus("");
+                  }}
+                  className="border border-white/25 bg-black px-3 py-2 text-white outline-none focus:border-white"
+                >
+                  {hotspotTargets.map((slug) => (
+                    <option key={slug} value={slug}>
+                      {targetLabels[slug]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {target !== "enter" ? (
+                <label className="flex items-center gap-2 text-sm text-white/70">
+                  Variant
+                  <select
+                    value={viewport}
+                    onChange={(event) => {
+                      setViewport(event.target.value as SceneViewport);
+                      setSelectedId(null);
+                      setActivePoints([]);
+                      cancelDrawing();
+                      setStatus("");
+                    }}
+                    className="border border-white/25 bg-black px-3 py-2 capitalize text-white outline-none focus:border-white"
+                  >
+                    {sceneViewports.map((sceneViewport) => (
+                      <option key={sceneViewport} value={sceneViewport}>
+                        {sceneViewport}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
           </nav>
 
           <div
-            className="relative mx-auto w-full max-w-[min(100%,calc(100dvh-9rem))] touch-none overflow-hidden bg-black"
-            style={{ aspectRatio }}
+            className="relative mx-auto w-full touch-none overflow-hidden bg-black"
+            style={stageFrameStyle}
           >
             {target === "enter" ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1021,12 +1093,12 @@ export function HotspotEditor() {
                 alt=""
                 draggable={false}
               />
-            ) : scene ? (
+            ) : scene && activeVideoSource ? (
               <video
-                key={scene.video.src}
+                key={activeVideoSource.src}
                 ref={videoRef}
                 className="absolute inset-0 h-full w-full object-cover"
-                src={scene.video.src}
+                src={activeVideoSource.src}
                 muted
                 loop
                 playsInline

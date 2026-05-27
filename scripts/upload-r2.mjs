@@ -7,15 +7,33 @@ const normalizedAudioRoot = "../assets/audio/r2-normalized";
 
 const videoUploads = [
   {
-    source:
-      "../assets/Phase 1 - Construction Zone/ROOMS/compressed/construction-1080-crf24-audio.mp4",
+    source: "../assets/rooms-20260516/compressed/construction-desktop-1080-crf24.mp4",
     key: "rooms/construction.mp4",
     contentType: "video/mp4",
   },
   {
-    source:
-      "../assets/Phase 1 - Construction Zone/ROOMS/compressed/hq-1080-crf24-audio.mp4",
+    source: "../assets/rooms-20260516/compressed/construction-desktop-1080-crf24.mp4",
+    key: "rooms/construction-desktop.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260516/compressed/construction-mobile-1080x1920-crf24.mp4",
+    key: "rooms/construction-mobile.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260516/compressed/hq-desktop-1080-crf24.mp4",
     key: "rooms/hq.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260516/compressed/hq-desktop-1080-crf24.mp4",
+    key: "rooms/hq-desktop.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260516/compressed/hq-mobile-1080x1920-crf24.mp4",
+    key: "rooms/hq-mobile.mp4",
     contentType: "video/mp4",
   },
 ];

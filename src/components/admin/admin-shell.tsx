@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AudioAdmin } from "@/components/admin/audio-admin";
+import { FontAdmin } from "@/components/admin/font-admin";
 
-type AdminTab = "audio" | "hotspots" | "settings";
+type AdminTab = "audio" | "hotspots" | "font" | "settings";
 
 const tabs: { id: AdminTab; label: string }[] = [
   { id: "audio", label: "Audio" },
   { id: "hotspots", label: "Hotspots" },
+  { id: "font", label: "Font" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -27,7 +29,7 @@ export function AdminShell() {
   }
 
   return (
-    <main className="h-dvh overflow-y-auto bg-neutral-950 text-white">
+    <main className="admin-cursors h-dvh overflow-y-auto bg-neutral-950 text-white">
       <header className="border-b border-white/10 bg-black">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <div>
@@ -86,6 +88,7 @@ export function AdminShell() {
               </Link>
             </section>
           ) : null}
+          {activeTab === "font" ? <FontAdmin /> : null}
           {activeTab === "settings" ? (
             <section className="grid gap-2">
               <h2 className="text-lg font-semibold">Settings</h2>

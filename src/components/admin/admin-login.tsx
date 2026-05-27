@@ -37,7 +37,7 @@ export function AdminLogin({ isConfigured }: AdminLoginProps) {
   }
 
   return (
-    <main className="flex h-dvh items-center justify-center bg-black p-6 text-white">
+    <main className="admin-cursors flex h-dvh items-center justify-center bg-black p-6 text-white">
       <form
         onSubmit={submitLogin}
         className="grid w-full max-w-sm gap-4 border border-white/20 bg-black p-5"
