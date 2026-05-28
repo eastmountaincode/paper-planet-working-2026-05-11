@@ -70,6 +70,7 @@ export type SceneTicker =
       position: "center";
       cycleSeconds: number;
       messageIntervalSeconds?: number;
+      epochOffsetSeconds?: number;
     };
 
 export type SceneVideoSource = {

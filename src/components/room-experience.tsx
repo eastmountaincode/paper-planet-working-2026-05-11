@@ -451,6 +451,35 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
 function CenterTicker({ ticker, devBorders }: CenterTickerProps) {
   const messageInterval =
     ticker.messageIntervalSeconds ?? ticker.cycleSeconds / ticker.messages.length;
+  const [globalPhaseSeconds, setGlobalPhaseSeconds] = useState<number | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const updateGlobalPhase = () => {
+      const seconds = Date.now() / 1000 + (ticker.epochOffsetSeconds ?? 0);
+      const cycleSeconds = Math.max(ticker.cycleSeconds, 1);
+
+      setGlobalPhaseSeconds(
+        ((seconds % cycleSeconds) + cycleSeconds) % cycleSeconds,
+      );
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        updateGlobalPhase();
+      }
+    };
+
+    updateGlobalPhase();
+    window.addEventListener("focus", updateGlobalPhase);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", updateGlobalPhase);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [ticker.cycleSeconds, ticker.epochOffsetSeconds]);
 
   return (
     <div
@@ -465,8 +494,9 @@ function CenterTicker({ ticker, devBorders }: CenterTickerProps) {
           key={message}
           className="paper-planet-center-ticker absolute left-0 top-1/2 w-max -translate-y-1/2 whitespace-nowrap font-paper-planet text-[clamp(2.6rem,9.2vw,7.4rem)] leading-none text-white"
           style={{
-            animationDelay: `${index * messageInterval}s`,
+            animationDelay: `${index * messageInterval - (globalPhaseSeconds ?? 0)}s`,
             animationDuration: `${ticker.cycleSeconds}s`,
+            visibility: globalPhaseSeconds === null ? "hidden" : "visible",
           }}
           aria-hidden={index > 0}
         >
