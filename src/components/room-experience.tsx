@@ -191,6 +191,7 @@ const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
 const PLAYLIST_METADATA_TOAST_MS = 6200;
 const MUSIC_NOTE_ICON_SRC = "/icons/music_note_icon.png";
+const LOADING_GIF_SRC = "/loading/paper-planet-loading.gif";
 const helperUnlockStorageKey = "paper-planet-helper-unlocked";
 const helperUnlockParam = "pp_debug";
 const helperUnlockValue = "paperplanet";
@@ -831,17 +832,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      if (
-        visibleViewport !== nextViewport &&
-        nextVideo &&
-        nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
-      ) {
+      if (visibleViewport !== nextViewport && nextVideo) {
         syncVideoElementTime(nextVideo);
         nextVideo.volume = 0;
         nextVideo.muted = true;
+        nextVideo.preload = "auto";
         void nextVideo.play().catch(() => undefined);
-        visibleSceneViewportRef.current = nextViewport;
-        setVisibleSceneViewport(nextViewport);
+
+        if (nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          visibleSceneViewportRef.current = nextViewport;
+          setVisibleSceneViewport(nextViewport);
+        }
       }
     };
 
@@ -903,7 +904,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     };
   }, []);
 
-  function markVideoReady() {
+  const markVideoReady = useCallback(() => {
     if (fadeOutInProgressRef.current) {
       return;
     }
@@ -911,9 +912,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setAudioTransitionMuted(false);
     setVideoReady(true);
     setIsExiting(false);
-  }
+  }, []);
 
-  function handleVariantVideoReady(viewport: SceneViewport) {
+  const handleVariantVideoReady = useCallback((viewport: SceneViewport) => {
     if (sceneViewportRef.current !== viewport) {
       return;
     }
@@ -929,7 +930,37 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     visibleSceneViewportRef.current = viewport;
     setVisibleSceneViewport(viewport);
     markVideoReady();
-  }
+  }, [markVideoReady, syncVideoElementTime]);
+
+  useEffect(() => {
+    if (videoReady || !sceneViewport) {
+      return undefined;
+    }
+
+    const checkActiveVideo = () => {
+      const viewport = sceneViewportRef.current;
+      const video = viewport ? videoElementsRef.current[viewport] : null;
+
+      if (!viewport || !video) {
+        return;
+      }
+
+      video.preload = "auto";
+      void video.play().catch(() => undefined);
+
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        handleVariantVideoReady(viewport);
+      }
+    };
+
+    const animationFrame = window.requestAnimationFrame(checkActiveVideo);
+    const timeout = window.setTimeout(checkActiveVideo, 700);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(timeout);
+    };
+  }, [handleVariantVideoReady, scene.slug, sceneViewport, videoReady]);
 
   useEffect(() => {
     for (const viewport of sceneViewports) {
@@ -2049,11 +2080,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                       )}
                       crossOrigin="anonymous"
                       src={videoSource.src}
-                      autoPlay
+                      autoPlay={isVisible}
                       muted
                       loop
                       playsInline
-                      preload="auto"
+                      preload={isVisible ? "auto" : "metadata"}
                       aria-hidden={!isVisible}
                       aria-label={
                         isVisible ? `${scene.title} room video` : undefined
@@ -2228,14 +2259,24 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
       <div
         className={classNames(
-          "fixed inset-0 z-40 bg-black transition-opacity duration-200",
+          "fixed inset-0 z-40 flex items-center justify-center bg-black transition-opacity duration-200",
           transitionActive
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
           devOutline(devBorders, 4),
         )}
         aria-hidden="true"
-      />
+      >
+        {transitionActive ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={LOADING_GIF_SRC}
+            alt=""
+            className="block w-28 select-none sm:w-36"
+            draggable={false}
+          />
+        ) : null}
+      </div>
 
       {!hasEntered ? (
         <div
