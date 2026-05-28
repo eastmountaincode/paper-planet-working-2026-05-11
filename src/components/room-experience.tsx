@@ -211,6 +211,10 @@ function wait(milliseconds: number) {
   });
 }
 
+function positiveModulo(value: number, divisor: number) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -462,40 +466,99 @@ function SyncedTicker({ ticker, devBorders }: SyncedTickerProps) {
 }
 
 function CenterTicker({ ticker, devBorders }: CenterTickerProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const messageInterval =
     ticker.messageIntervalSeconds ?? ticker.cycleSeconds / ticker.messages.length;
-  const [globalPhaseSeconds, setGlobalPhaseSeconds] = useState<number | null>(
-    null,
-  );
 
   useEffect(() => {
-    const updateGlobalPhase = () => {
-      const seconds = Date.now() / 1000 + (ticker.epochOffsetSeconds ?? 0);
-      const cycleSeconds = Math.max(ticker.cycleSeconds, 1);
+    const viewport = viewportRef.current;
 
-      setGlobalPhaseSeconds(
-        ((seconds % cycleSeconds) + cycleSeconds) % cycleSeconds,
+    if (!viewport) {
+      return;
+    }
+
+    let animationFrame = 0;
+    let viewportWidth = viewport.clientWidth;
+    let messageWidths = ticker.messages.map(
+      (_, index) => messageRefs.current[index]?.offsetWidth ?? 0,
+    );
+    const cycleSeconds = Math.max(ticker.cycleSeconds, 1);
+    const intervalSeconds = Math.max(messageInterval, 0.1);
+    const travelSeconds = Math.min(
+      cycleSeconds,
+      Math.max(1, intervalSeconds * 0.825),
+    );
+
+    const measure = () => {
+      viewportWidth = viewport.clientWidth;
+      messageWidths = ticker.messages.map(
+        (_, index) => messageRefs.current[index]?.offsetWidth ?? 0,
       );
     };
 
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        updateGlobalPhase();
-      }
+    const tick = () => {
+      const seconds = Date.now() / 1000 + (ticker.epochOffsetSeconds ?? 0);
+
+      ticker.messages.forEach((_, index) => {
+        const element = messageRefs.current[index];
+
+        if (!element) {
+          return;
+        }
+
+        const phase = positiveModulo(
+          seconds - index * intervalSeconds,
+          cycleSeconds,
+        );
+
+        if (phase > travelSeconds) {
+          element.style.opacity = "0";
+          element.style.visibility = "hidden";
+          return;
+        }
+
+        const progress = phase / travelSeconds;
+        const startX = viewportWidth * 1.1;
+        const endX = -(messageWidths[index] || element.offsetWidth) * 1.05;
+        const x = startX + (endX - startX) * progress;
+        const rotation = -1.4 + 2.4 * progress;
+
+        element.style.opacity = "1";
+        element.style.visibility = "visible";
+        element.style.transform = `translate3d(${x.toFixed(
+          2,
+        )}px, -50%, 0) rotate(${rotation.toFixed(3)}deg)`;
+      });
+
+      animationFrame = window.requestAnimationFrame(tick);
     };
 
-    updateGlobalPhase();
-    window.addEventListener("focus", updateGlobalPhase);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(viewport);
+    messageRefs.current.forEach((element) => {
+      if (element) {
+        resizeObserver.observe(element);
+      }
+    });
+
+    measure();
+    tick();
 
     return () => {
-      window.removeEventListener("focus", updateGlobalPhase);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
     };
-  }, [ticker.cycleSeconds, ticker.epochOffsetSeconds]);
+  }, [
+    messageInterval,
+    ticker.cycleSeconds,
+    ticker.epochOffsetSeconds,
+    ticker.messages,
+  ]);
 
   return (
     <div
+      ref={viewportRef}
       className={classNames(
         "pointer-events-none absolute inset-x-0 top-[58%] z-20 h-[34dvh] min-h-36 -translate-y-1/2 overflow-hidden text-white",
         devOutline(devBorders, 5),
@@ -505,11 +568,12 @@ function CenterTicker({ ticker, devBorders }: CenterTickerProps) {
       {ticker.messages.map((message, index) => (
         <div
           key={message}
-          className="paper-planet-center-ticker absolute left-0 top-1/2 w-max -translate-y-1/2 whitespace-nowrap font-paper-planet text-[clamp(2.6rem,9.2vw,7.4rem)] leading-none text-white"
+          ref={(element) => {
+            messageRefs.current[index] = element;
+          }}
+          className="absolute left-0 top-1/2 w-max whitespace-nowrap font-paper-planet text-[clamp(2.6rem,9.2vw,7.4rem)] leading-none text-white opacity-0 will-change-transform"
           style={{
-            animationDelay: `${index * messageInterval - (globalPhaseSeconds ?? 0)}s`,
-            animationDuration: `${ticker.cycleSeconds}s`,
-            visibility: globalPhaseSeconds === null ? "hidden" : "visible",
+            visibility: "hidden",
           }}
           aria-hidden={index > 0}
         >
