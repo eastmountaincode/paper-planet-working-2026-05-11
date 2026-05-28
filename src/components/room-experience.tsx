@@ -190,6 +190,10 @@ const MAX_STAGE_SCALE = 3;
 const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
 const PLAYLIST_METADATA_TOAST_MS = 6200;
+const helperUnlockStorageKey = "paper-planet-helper-unlocked";
+const helperUnlockParam = "pp_debug";
+const helperUnlockValue = "paperplanet";
+const helperUnlockedByDefault = process.env.NODE_ENV !== "production";
 
 type NativeGestureEvent = Event & {
   clientX?: number;
@@ -553,13 +557,23 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const visibleSceneViewportRef = useRef<SceneViewport | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const sceneSlugRef = useRef(initialScene.slug);
+  const helperParamValue = searchParams.get(helperUnlockParam);
+  const helperUnlockedByUrl = helperParamValue === helperUnlockValue;
+  const helperLockedByUrl = helperParamValue === "0";
+  const helperInitiallyUnlocked = helperUnlockedByDefault || helperUnlockedByUrl;
+  const [devPanelUnlocked, setDevPanelUnlocked] = useState(
+    helperInitiallyUnlocked,
+  );
   const debugHotspots =
-    searchParams.get("hotspots") === "1" || searchParams.get("debug") === "1";
+    devPanelUnlocked &&
+    (searchParams.get("hotspots") === "1" ||
+      searchParams.get("debug") === "1" ||
+      helperUnlockedByUrl);
   const [pointerPosition, setPointerPosition] =
     useState<PointerPosition | null>(null);
-  const [devPanelOpen, setDevPanelOpen] = useState(true);
+  const [devPanelOpen, setDevPanelOpen] = useState(helperInitiallyUnlocked);
   const [devBorders, setDevBorders] = useState(
-    searchParams.get("dev") === "1",
+    helperInitiallyUnlocked && searchParams.get("dev") === "1",
   );
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
@@ -636,6 +650,38 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     playlistEnabled &&
     !playlistAudioMuted &&
     !audioTransitionMuted;
+
+  useEffect(() => {
+    if (helperUnlockedByDefault) {
+      return undefined;
+    }
+
+    const syncHelperUnlock = window.setTimeout(() => {
+      if (helperLockedByUrl) {
+        window.localStorage.removeItem(helperUnlockStorageKey);
+        setDevPanelUnlocked(false);
+        setDevPanelOpen(false);
+        setDevBorders(false);
+        return;
+      }
+
+      if (helperUnlockedByUrl) {
+        window.localStorage.setItem(helperUnlockStorageKey, "1");
+        setDevPanelUnlocked(true);
+        setDevPanelOpen(true);
+        return;
+      }
+
+      setDevPanelUnlocked(
+        window.localStorage.getItem(helperUnlockStorageKey) === "1",
+      );
+    }, 0);
+
+    return () => {
+      window.clearTimeout(syncHelperUnlock);
+    };
+  }, [helperLockedByUrl, helperUnlockedByUrl]);
+
   const orderedHotspots = useMemo(
     () => sortHotspotsByZOrder(activeHotspots),
     [activeHotspots],
@@ -1062,6 +1108,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
       const key = event.key.toLowerCase();
 
+      if (!devPanelUnlocked) {
+        return;
+      }
+
       if (key === "b") {
         setDevBorders((current) => !current);
       }
@@ -1076,7 +1126,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, []);
+  }, [devPanelUnlocked]);
 
   useEffect(() => {
     if (!syncedPlayback) {
