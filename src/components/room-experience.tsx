@@ -192,7 +192,6 @@ const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
 const PLAYLIST_METADATA_TOAST_MS = 6200;
 const LOADING_PREVIEW_MS = 3200;
-const MUSIC_NOTE_ICON_SRC = "/icons/music_note_icon.png";
 const LOADING_GIF_SRC = "/loading/paper-planet-loading.gif";
 const helperUnlockStorageKey = "paper-planet-helper-unlocked";
 const helperUnlockParam = "pp_debug";
@@ -773,11 +772,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     }),
     [stageTransform.scale, stageTransform.x, stageTransform.y],
   );
-  const musicNoteFrame = useMemo(
-    () => createPlaylistMetadataFrame("music-note-button"),
-    [],
-  );
-
   const showMetadataToast = useCallback(
     (title: string, album?: string, artist?: string) => {
       const nextId = metadataToastIdRef.current + 1;
@@ -2321,42 +2315,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             })}
           </div>
 
-          {hasEntered && playlistEnabled && activePlaylistTrack ? (
-            <button
-              type="button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => showPlaylistMetadataToast(activePlaylistTrack)}
-              className={classNames(
-                "absolute bottom-3 right-3 z-30 flex w-12 cursor-pointer items-center justify-center bg-transparent p-1.5 opacity-70 hover:opacity-90 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:bottom-4 md:right-4 md:w-14 md:p-2",
-                devOutline(devBorders, 4),
-              )}
-              aria-label="Show current song metadata"
-            >
-              <svg
-                className="pointer-events-none absolute inset-0 -z-10 h-full w-full overflow-visible"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                <path
-                  d={musicNoteFrame.path}
-                  fill="rgba(0, 0, 0, 0.86)"
-                  stroke="rgba(255, 255, 255, 0.82)"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.35"
-                  vectorEffect="non-scaling-stroke"
-                />
-              </svg>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={MUSIC_NOTE_ICON_SRC}
-                alt=""
-                className="block h-auto w-full select-none invert"
-                draggable={false}
-              />
-            </button>
-          ) : null}
         </div>
       </section>
 
