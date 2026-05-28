@@ -4,13 +4,14 @@ import type { ScenePlaylistData, SceneSlug } from "@/lib/scenes";
 export type { SceneSlug } from "@/lib/scenes";
 
 export const PLAYLIST_MANIFEST_KEY = "manifests/playlists.json";
-export const PLAYLIST_MANIFEST_VERSION = 2;
+export const PLAYLIST_MANIFEST_VERSION = 3;
 
 export type PlaylistPlaybackMode = "ordered" | "deterministic-random";
 
 export type PlaylistManifestTrack = {
   id: string;
   title: string;
+  artist?: string;
   album?: string;
   key: string;
   src: string;
@@ -144,6 +145,9 @@ function normalizeTrack(value: unknown): PlaylistManifestTrack | null {
   return {
     id: asString(value.id, createTrackId()),
     title: asString(value.title, stripTrackNumber(key.split("/").at(-1) ?? key)),
+    ...(typeof value.artist === "string" && value.artist
+      ? { artist: value.artist }
+      : {}),
     ...(typeof value.album === "string" && value.album ? { album: value.album } : {}),
     key,
     src: asString(value.src, key),
@@ -170,6 +174,7 @@ export function createStaticPlaylistManifest(): PlaylistManifest {
       tracks: playlist.tracks.map((track, index) => ({
         id: `${slug}-${index}-${slugifyPathSegment(track.key)}`,
         title: track.title,
+        ...(track.artist ? { artist: track.artist } : {}),
         ...(track.album ? { album: track.album } : {}),
         key: track.key,
         src: track.src,
@@ -245,6 +250,7 @@ export function playlistManifestToScenePlaylists(
       ),
       tracks: enabledTracks.map((track) => ({
         title: track.title,
+        ...(track.artist ? { artist: track.artist } : {}),
         ...(track.album ? { album: track.album } : {}),
         sourceFile: track.originalFileName ?? track.key,
         key: track.key,

@@ -52,6 +52,10 @@ type NormalizedAudio = {
   durationSeconds: number;
 };
 
+type UploadedTrackMetadata = {
+  artist?: string;
+};
+
 type DropPlacement = "before" | "after";
 
 const playlistDraftStorageKey = "paper-planet-admin-playlist-draft-v1";
@@ -110,6 +114,104 @@ function getRelativePath(file: File) {
 
 function wait(milliseconds: number) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function readSynchsafeInteger(bytes: Uint8Array, offset: number) {
+  return (
+    ((bytes[offset] ?? 0) << 21) |
+    ((bytes[offset + 1] ?? 0) << 14) |
+    ((bytes[offset + 2] ?? 0) << 7) |
+    (bytes[offset + 3] ?? 0)
+  );
+}
+
+function readBigEndianInteger(bytes: Uint8Array, offset: number) {
+  return (
+    ((bytes[offset] ?? 0) << 24) |
+    ((bytes[offset + 1] ?? 0) << 16) |
+    ((bytes[offset + 2] ?? 0) << 8) |
+    (bytes[offset + 3] ?? 0)
+  ) >>> 0;
+}
+
+function decodeId3TextFrame(frameData: Uint8Array) {
+  const encoding = frameData[0] ?? 0;
+  const textData = frameData.slice(1);
+
+  let text = "";
+
+  try {
+    if (encoding === 1) {
+      if (textData[0] === 0xfe && textData[1] === 0xff) {
+        text = new TextDecoder("utf-16be").decode(textData.slice(2));
+      } else if (textData[0] === 0xff && textData[1] === 0xfe) {
+        text = new TextDecoder("utf-16le").decode(textData.slice(2));
+      } else {
+        text = new TextDecoder("utf-16le").decode(textData);
+      }
+    } else if (encoding === 2) {
+      text = new TextDecoder("utf-16be").decode(textData);
+    } else {
+      const decoder = new TextDecoder(encoding === 3 ? "utf-8" : "windows-1252");
+      text = decoder.decode(textData);
+    }
+  } catch {
+    text = new TextDecoder().decode(textData);
+  }
+
+  return text.replace(/\0/g, "").trim() || undefined;
+}
+
+async function extractUploadedTrackMetadata(
+  file: File,
+): Promise<UploadedTrackMetadata> {
+  const header = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+
+  if (
+    header.length < 10 ||
+    header[0] !== 0x49 ||
+    header[1] !== 0x44 ||
+    header[2] !== 0x33
+  ) {
+    return {};
+  }
+
+  const majorVersion = header[3] ?? 0;
+  const tagSize = readSynchsafeInteger(header, 6);
+  const bytes = new Uint8Array(await file.slice(10, 10 + tagSize).arrayBuffer());
+  let offset = 0;
+
+  while (offset + 10 <= bytes.length) {
+    const frameId = String.fromCharCode(
+      bytes[offset] ?? 0,
+      bytes[offset + 1] ?? 0,
+      bytes[offset + 2] ?? 0,
+      bytes[offset + 3] ?? 0,
+    );
+
+    if (!/^[A-Z0-9]{4}$/.test(frameId)) {
+      break;
+    }
+
+    const frameSize =
+      majorVersion === 4
+        ? readSynchsafeInteger(bytes, offset + 4)
+        : readBigEndianInteger(bytes, offset + 4);
+
+    if (frameSize <= 0 || offset + 10 + frameSize > bytes.length) {
+      break;
+    }
+
+    if (frameId === "TPE1") {
+      return {
+        artist: decodeId3TextFrame(bytes.slice(offset + 10, offset + 10 + frameSize)),
+      };
+    }
+
+    offset += 10 + frameSize;
+  }
+
+  return {};
 }
 
 function readPlaylistDraft() {
@@ -987,6 +1089,8 @@ export function AudioAdmin() {
       const relativePath = getRelativePath(file);
 
       try {
+        const uploadedMetadata = await extractUploadedTrackMetadata(file);
+
         updateUploadRow(row.id, {
           message: `Normalizing ${formatBytes(file.size)}`,
           progress: 0.05,
@@ -1017,6 +1121,7 @@ export function AudioAdmin() {
         uploadedTracks.push({
           id: createTrackId(),
           title: stripTrackNumber(file.name),
+          ...(uploadedMetadata.artist ? { artist: uploadedMetadata.artist } : {}),
           ...(getFolderAlbum(relativePath)
             ? { album: getFolderAlbum(relativePath) }
             : {}),
@@ -1273,7 +1378,7 @@ export function AudioAdmin() {
         </div>
 
         <div className="overflow-x-auto border border-white/10">
-          <table className="w-full min-w-[920px] border-collapse text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
             <thead className="bg-white/5 text-left text-xs uppercase tracking-[0.12em] text-white/45">
               <tr>
                 <th className="w-10 px-3 py-2 font-medium">
@@ -1294,6 +1399,7 @@ export function AudioAdmin() {
                 <th className="w-12 px-3 py-2 font-medium">Sort</th>
                 <th className="px-3 py-2 font-medium">Order</th>
                 <th className="px-3 py-2 font-medium">Title</th>
+                <th className="px-3 py-2 font-medium">Artist</th>
                 <th className="px-3 py-2 font-medium">Album</th>
                 <th className="px-3 py-2 font-medium">Duration</th>
                 <th className="px-3 py-2 font-medium">Key</th>
@@ -1364,6 +1470,17 @@ export function AudioAdmin() {
                       value={track.title}
                       onChange={(event) =>
                         updateTrack(track.id, { title: event.target.value })
+                      }
+                      className="w-full border border-white/10 bg-black px-2 py-1 text-white outline-none focus:border-white/50"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <input
+                      value={track.artist ?? ""}
+                      onChange={(event) =>
+                        updateTrack(track.id, {
+                          artist: event.target.value || undefined,
+                        })
                       }
                       className="w-full border border-white/10 bg-black px-2 py-1 text-white outline-none focus:border-white/50"
                     />

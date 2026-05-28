@@ -9,6 +9,10 @@ import {
   type PointerEvent,
 } from "react";
 import enterHotspotsData from "@/lib/enter-hotspots.json";
+import {
+  normalizeHotspotManifest,
+  type HotspotManifest,
+} from "@/lib/hotspot-manifest";
 import type {
   Hotspot,
   HotspotAction,
@@ -49,7 +53,7 @@ const targetKeyToStorageSlug = (targetKey: HotspotTargetKey) =>
   targetKey.replace(":", "-");
 
 const editorStorageKey = (targetKey: HotspotTargetKey) =>
-  `paper-planet-hotspots-v3:${targetKey}`;
+  `paper-planet-hotspots-v4:${targetKey}`;
 const hiddenStorageKey = (targetKey: HotspotTargetKey) =>
   `paper-planet-hotspots-hidden-v2:${targetKey}`;
 const legacyDraftStorageKey = (target: HotspotTarget) =>
@@ -270,8 +274,24 @@ function loadHotspotsByTarget() {
   return hotspotsByTarget;
 }
 
-function loadStoredHotspotsByTarget() {
-  const hotspotsByTarget = loadHotspotsByTarget();
+function hotspotsByTargetFromManifest(manifest: HotspotManifest) {
+  const hotspotsByTarget = emptyHotspotsByTarget();
+
+  hotspotsByTarget.enter = manifest.enter;
+  for (const slug of sceneSlugs) {
+    for (const viewport of sceneViewports) {
+      hotspotsByTarget[getTargetKey(slug, viewport)] =
+        manifest.scenes[slug][viewport];
+    }
+  }
+
+  return hotspotsByTarget;
+}
+
+function loadStoredHotspotsByTarget(
+  baseHotspotsByTarget = loadHotspotsByTarget(),
+) {
+  const hotspotsByTarget = { ...baseHotspotsByTarget };
 
   if (typeof window === "undefined") {
     return hotspotsByTarget;
@@ -377,8 +397,8 @@ function HotspotEditorSidebar({
         <h1 className="text-lg font-semibold">Hotspot Editor</h1>
         <p className="mt-2 text-sm leading-6 text-white/65">
           Draw on the media to create a clickable area. Select a hotspot to
-          rename it, change its action, hide it, delete it, or save the current
-          target back into the app.
+          rename it, change its action, hide it, delete it, or publish the
+          current target to R2.
         </p>
       </div>
 
@@ -388,7 +408,7 @@ function HotspotEditorSidebar({
           onClick={onSaveToAppFile}
           className="bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-white/85"
         >
-          Save Hotspots to App
+          Publish Hotspots
         </button>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -412,7 +432,7 @@ function HotspotEditorSidebar({
             onClick={onResetToAppHotspots}
             className="border border-white/25 px-3 py-2 text-sm transition hover:border-white"
           >
-            Reset to App
+            Reset to R2
           </button>
           <button
             type="button"
@@ -639,6 +659,8 @@ export function HotspotEditor() {
   const [target, setTarget] = useState<HotspotTarget>("enter");
   const [viewport, setViewport] = useState<SceneViewport>("desktop");
   const [hotspotsByTarget, setHotspotsByTarget] = useState(loadHotspotsByTarget);
+  const [appHotspotsByTarget, setAppHotspotsByTarget] =
+    useState(loadHotspotsByTarget);
   const [hiddenIdsByTarget, setHiddenIdsByTarget] = useState(
     loadHiddenIdsByTarget,
   );
@@ -689,14 +711,51 @@ export function HotspotEditor() {
   }, [activeVideoSource?.height, activeVideoSource?.width, aspectRatio, target]);
 
   useEffect(() => {
-    const loadStorageTimeout = window.setTimeout(() => {
-      setHotspotsByTarget(loadStoredHotspotsByTarget());
+    let isCanceled = false;
+
+    async function loadEditorHotspots() {
+      let source = "static";
+      let baseHotspotsByTarget = loadHotspotsByTarget();
+
+      const adminResponse = await fetch("/api/admin/hotspots", {
+        cache: "no-store",
+      }).catch(() => null);
+      const response =
+        adminResponse?.ok
+          ? adminResponse
+          : await fetch("/api/hotspots", { cache: "no-store" }).catch(
+              () => null,
+            );
+
+      if (response?.ok) {
+        const result = (await response.json()) as {
+          manifest?: unknown;
+          source?: string;
+        };
+        const manifest = normalizeHotspotManifest(result.manifest);
+        baseHotspotsByTarget = hotspotsByTargetFromManifest(manifest);
+        source = result.source ?? "r2";
+      }
+
+      if (isCanceled) {
+        return;
+      }
+
+      setAppHotspotsByTarget(baseHotspotsByTarget);
+      setHotspotsByTarget(loadStoredHotspotsByTarget(baseHotspotsByTarget));
       setHiddenIdsByTarget(loadStoredHiddenIdsByTarget());
       setStorageReady(true);
-    }, 0);
+      setStatus(
+        source === "r2"
+          ? "Loaded hotspots from R2."
+          : "Loaded static fallback hotspots.",
+      );
+    }
+
+    void loadEditorHotspots();
 
     return () => {
-      window.clearTimeout(loadStorageTimeout);
+      isCanceled = true;
     };
   }, []);
 
@@ -877,14 +936,10 @@ export function HotspotEditor() {
   }
 
   function resetToAppHotspots() {
-    setTargetHotspots(
-      target === "enter"
-        ? enterHotspots
-        : (scenes[target].hotspotVariants?.[viewport] ?? scenes[target].hotspots),
-    );
+    setTargetHotspots(appHotspotsByTarget[targetKey]);
     setTargetHiddenIds([]);
     setSelectedId(null);
-    setStatus("Reset this target to the hotspots currently saved in the app.");
+    setStatus("Reset this target to the hotspots currently saved in R2.");
   }
 
   function toggleHidden(id: string) {
@@ -929,9 +984,9 @@ export function HotspotEditor() {
   }
 
   async function saveToAppFile() {
-    setStatus("Saving...");
+    setStatus("Publishing hotspots...");
 
-    const response = await fetch("/api/dev/hotspots", {
+    const response = await fetch("/api/admin/hotspots", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -943,14 +998,31 @@ export function HotspotEditor() {
       }),
     });
 
-    const result = (await response.json()) as { error?: string; count?: number };
+    const result = (await response.json()) as {
+      error?: string;
+      count?: number;
+      manifest?: unknown;
+    };
 
     if (!response.ok) {
       setStatus(result.error ?? "Save failed.");
       return;
     }
 
-    setStatus(`Saved ${result.count ?? hotspots.length} hotspot(s) to the app.`);
+    if (result.manifest) {
+      const manifest = normalizeHotspotManifest(result.manifest);
+      const nextAppHotspotsByTarget = hotspotsByTargetFromManifest(manifest);
+
+      setAppHotspotsByTarget(nextAppHotspotsByTarget);
+    } else {
+      setAppHotspotsByTarget((currentByTarget) => ({
+        ...currentByTarget,
+        [targetKey]: hotspots,
+      }));
+    }
+
+    window.localStorage.removeItem(editorStorageKey(targetKey));
+    setStatus(`Published ${result.count ?? hotspots.length} hotspot(s) to R2.`);
   }
 
   function seekTo(value: number) {

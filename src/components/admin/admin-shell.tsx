@@ -80,6 +80,10 @@ export function AdminShell() {
           {activeTab === "hotspots" ? (
             <section className="grid gap-4">
               <h2 className="text-lg font-semibold">Hotspots</h2>
+              <p className="max-w-2xl text-sm leading-6 text-white/60">
+                Hotspots publish to the R2 manifest used by the live site. The
+                repo JSON is only the fallback seed.
+              </p>
               <Link
                 href="/tools/hotspots"
                 className="w-fit bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-white/85"

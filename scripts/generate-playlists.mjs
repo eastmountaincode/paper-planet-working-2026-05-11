@@ -189,6 +189,33 @@ function getAlbum(folder, file) {
   return relativeParts.slice(0, -1).join(" / ");
 }
 
+function getArtist(file) {
+  const result = spawnSync(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format_tags=artist",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      file,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  const artist = result.stdout.trim();
+
+  return artist || undefined;
+}
+
 const manifest = {};
 const usedKeys = new Set();
 
@@ -198,9 +225,11 @@ for (const [slug, definition] of Object.entries(playlistDefinitions)) {
   let tracks = files.map((file) => {
     const sourceFile = toPosixPath(relative(projectRoot, file));
     const key = getTrackKey(definition, folder, file, usedKeys);
+    const artist = getArtist(file);
 
     return {
       title: stripTrackNumber(file.split(sep).at(-1) ?? ""),
+      ...(artist ? { artist } : {}),
       album: getAlbum(folder, file),
       sourceFile,
       key,

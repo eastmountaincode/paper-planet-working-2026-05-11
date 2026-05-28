@@ -1,12 +1,13 @@
 "use client";
 
 import type { KeyboardEvent, PointerEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import enterHotspotsData from "@/lib/enter-hotspots.json";
+import { normalizeHotspotManifest } from "@/lib/hotspot-manifest";
 import type { Hotspot, PercentPoint, RectHotspot } from "@/lib/scenes";
 
 const ENTER_ARTWORK_SRC = "/enter/paper-planet-enter.webp";
-const enterHotspots = enterHotspotsData as Hotspot[];
+const staticEnterHotspots = enterHotspotsData as Hotspot[];
 
 type EnterArtworkButtonProps = {
   className?: string;
@@ -41,7 +42,33 @@ export function EnterArtworkButton({
   onPointerPrime,
 }: EnterArtworkButtonProps) {
   const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
+  const [enterHotspots, setEnterHotspots] = useState(staticEnterHotspots);
   const isPointingAtHotspot = activeHotspotId !== null;
+
+  useEffect(() => {
+    let isCanceled = false;
+
+    async function loadRuntimeHotspots() {
+      const response = await fetch("/api/hotspots", { cache: "no-store" });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const result = (await response.json()) as { manifest?: unknown };
+      const manifest = normalizeHotspotManifest(result.manifest);
+
+      if (!isCanceled) {
+        setEnterHotspots(manifest.enter);
+      }
+    }
+
+    void loadRuntimeHotspots().catch(() => undefined);
+
+    return () => {
+      isCanceled = true;
+    };
+  }, []);
 
   function handlePointerEnter(hotspotId: string) {
     setActiveHotspotId(hotspotId);

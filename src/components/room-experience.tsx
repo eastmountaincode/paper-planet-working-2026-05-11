@@ -34,6 +34,10 @@ import {
   normalizePlaylistManifest,
   playlistManifestToScenePlaylists,
 } from "@/lib/playlist-manifest";
+import {
+  hotspotManifestToSceneHotspots,
+  normalizeHotspotManifest,
+} from "@/lib/hotspot-manifest";
 import { EnterArtworkButton } from "@/components/enter-artwork-button";
 
 type RoomExperienceProps = {
@@ -68,6 +72,7 @@ type PlaylistTrack = NonNullable<Scene["playlist"]>["tracks"][number];
 type PlaylistMetadataToast = {
   id: number;
   title: string;
+  artist?: string;
   album?: string;
   frame: PlaylistMetadataFrame;
 };
@@ -644,14 +649,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   );
 
   const showMetadataToast = useCallback(
-    (title: string, album?: string) => {
+    (title: string, album?: string, artist?: string) => {
       const nextId = metadataToastIdRef.current + 1;
       metadataToastIdRef.current = nextId;
       setMetadataToast({
         id: nextId,
         title,
+        ...(artist ? { artist } : {}),
         ...(album ? { album } : {}),
-        frame: createPlaylistMetadataFrame(`${nextId}:${title}:${album ?? ""}`),
+        frame: createPlaylistMetadataFrame(
+          `${nextId}:${title}:${artist ?? ""}:${album ?? ""}`,
+        ),
       });
 
       if (metadataToastTimeoutRef.current) {
@@ -672,7 +680,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      showMetadataToast(track.title, track.album);
+      showMetadataToast(track.title, track.album, track.artist);
     },
     [activePlaylistTrack, showMetadataToast],
   );
@@ -808,16 +816,24 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     let isCanceled = false;
 
-    async function loadRuntimePlaylists() {
-      const response = await fetch("/api/playlists", { cache: "no-store" });
+    async function loadRuntimeManifests() {
+      const [playlistResponse, hotspotResponse] = await Promise.all([
+        fetch("/api/playlists", { cache: "no-store" }).catch(() => null),
+        fetch("/api/hotspots", { cache: "no-store" }).catch(() => null),
+      ]);
 
-      if (!response.ok) {
-        return;
-      }
-
-      const result = (await response.json()) as { manifest?: unknown };
-      const manifest = normalizePlaylistManifest(result.manifest);
-      const nextScenes = createScenes(playlistManifestToScenePlaylists(manifest));
+      const playlistResult = playlistResponse?.ok
+        ? ((await playlistResponse.json()) as { manifest?: unknown })
+        : {};
+      const hotspotResult = hotspotResponse?.ok
+        ? ((await hotspotResponse.json()) as { manifest?: unknown })
+        : {};
+      const playlistManifest = normalizePlaylistManifest(playlistResult.manifest);
+      const hotspotManifest = normalizeHotspotManifest(hotspotResult.manifest);
+      const nextScenes = createScenes(
+        playlistManifestToScenePlaylists(playlistManifest),
+        hotspotManifestToSceneHotspots(hotspotManifest),
+      );
       const nextScene = nextScenes[sceneSlugRef.current] ?? nextScenes.construction;
       const nextPosition = getInitialPlaylistPosition(nextScene);
 
@@ -829,7 +845,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       }
     }
 
-    void loadRuntimePlaylists();
+    void loadRuntimeManifests();
 
     return () => {
       isCanceled = true;
@@ -2178,6 +2194,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
             <p className="text-balance break-words text-[clamp(1.9rem,6.4vw,3rem)] leading-[0.62] text-white">
               {metadataToast.title}
             </p>
+            {metadataToast.artist ? (
+              <p className="mt-0.5 text-balance break-words text-[1.45rem] leading-[0.68] text-white/72 sm:text-[1.85rem]">
+                artist: {metadataToast.artist}
+              </p>
+            ) : null}
             {metadataToast.album ? (
               <p className="mt-0.5 text-balance break-words text-[1.45rem] leading-[0.68] text-white/72 sm:text-[1.85rem]">
                 album: {metadataToast.album}
@@ -2335,6 +2356,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         showMetadataToast(
                           "The Extraordinary Paper Planet Construction Parade",
                           activePlaylistTrack.album,
+                          activePlaylistTrack.artist,
                         )
                       }
                       className={classNames(
@@ -2350,6 +2372,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         showMetadataToast(
                           activePlaylistTrack.title,
                           "The Complete Songs From The Long Walk Through Paper Planet",
+                          activePlaylistTrack.artist,
                         )
                       }
                       className={classNames(
@@ -2362,7 +2385,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                     <button
                       type="button"
                       onClick={() =>
-                        showMetadataToast("Conito's Way", "Alpaulccino")
+                        showMetadataToast(
+                          "Conito's Way",
+                          "Alpaulccino",
+                          "Connor",
+                        )
                       }
                       className={classNames(
                         "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",

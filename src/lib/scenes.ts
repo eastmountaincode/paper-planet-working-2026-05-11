@@ -108,6 +108,7 @@ export type Scene = {
     };
     tracks: {
       title: string;
+      artist?: string;
       album?: string;
       sourceFile: string;
       key: string;
@@ -123,6 +124,7 @@ export type Scene = {
 
 export type ScenePlaylistTrackData = {
   title: string;
+  artist?: string;
   album?: string;
   sourceFile: string;
   key: string;
@@ -149,17 +151,19 @@ const mediaUrl = (path: string) =>
 const roomVideoUrl = (path: string) => mediaUrl(`${path}?v=${roomVideoVersion}`);
 const roomAudioUrl = (path: string) => mediaUrl(`${path}?v=${roomAudioVersion}`);
 
-type SceneHotspotEntry =
+export type SceneHotspotEntry =
   | Hotspot[]
   | Partial<Record<SceneViewport, Hotspot[]>>;
+export type SceneHotspotsData = Record<SceneSlug, SceneHotspotEntry>;
 
-const sceneHotspots = sceneHotspotsData as Record<SceneSlug, SceneHotspotEntry>;
+const sceneHotspots = sceneHotspotsData as SceneHotspotsData;
 const scenePlaylists = scenePlaylistsData as Record<SceneSlug, ScenePlaylistData>;
 
 function getSceneHotspotVariants(
   slug: SceneSlug,
+  hotspots: SceneHotspotsData,
 ): Record<SceneViewport, Hotspot[]> {
-  const hotspotEntry = sceneHotspots[slug];
+  const hotspotEntry = hotspots[slug];
 
   if (Array.isArray(hotspotEntry)) {
     return {
@@ -205,6 +209,7 @@ function getPlaylistTracks(
 ) {
   return playlists[slug].tracks.map((track) => ({
     title: formatTrackTitle(track.title),
+    ...(track.artist ? { artist: track.artist } : {}),
     ...(track.album ? { album: track.album } : {}),
     sourceFile: track.sourceFile,
     key: track.key,
@@ -215,6 +220,7 @@ function getPlaylistTracks(
 
 export function createScenes(
   playlists: Record<SceneSlug, ScenePlaylistData> = scenePlaylists,
+  hotspots: SceneHotspotsData = sceneHotspots,
 ): Record<SceneSlug, Scene> {
   const constructionVideoSources = {
     desktop: createSceneVideoSource(
@@ -244,8 +250,8 @@ export function createScenes(
       "assets/rooms-20260516/compressed/hq-mobile-1080x1920-crf24.mp4",
     ),
   };
-  const constructionHotspots = getSceneHotspotVariants("construction");
-  const hqHotspots = getSceneHotspotVariants("hq");
+  const constructionHotspots = getSceneHotspotVariants("construction", hotspots);
+  const hqHotspots = getSceneHotspotVariants("hq", hotspots);
 
   return {
     construction: {
