@@ -26,8 +26,6 @@ type UnlockRoomPlaylistOptions = PlayRoomPlaylistTrackOptions & {
 };
 
 type EntryContextValue = {
-  attachVideoAudio: (video: HTMLVideoElement, volume: number) => Promise<void>;
-  detachVideoAudio: (video: HTMLVideoElement) => void;
   hasEntered: boolean;
   markEntered: () => void;
   playRoomPlaylistTrack: (
@@ -126,10 +124,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const playlistGainRef = useRef<GainNode | null>(null);
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
   const playlistRequestIdRef = useRef(0);
-  const videoSourcesRef = useRef(
-    new WeakMap<HTMLVideoElement, MediaElementAudioSourceNode>(),
-  );
-  const videoGainRef = useRef<GainNode | null>(null);
   const activePlaylistRoomRef = useRef<SceneSlug | null>(null);
   const [hasEntered, setHasEntered] = useState(false);
   const [playlistStatus, setPlaylistStatus] = useState<PlaylistStatus>(
@@ -280,12 +274,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const setVideoAudioLevel = useCallback((volume: number, muted: boolean) => {
     const nextGain = muted ? 0 : volume;
     setVideoGain(nextGain);
-
-    if (!videoGainRef.current) {
-      return;
-    }
-
-    rampGain(videoGainRef.current, nextGain);
   }, []);
 
   const setRoomPlaylistAudioLevel = useCallback(
@@ -321,42 +309,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     },
     [ensurePlaylistGain, updatePlaylistStatus],
   );
-
-  const attachVideoAudio = useCallback(
-    async (video: HTMLVideoElement, volume: number) => {
-      const context = ensureAudioContext();
-
-      if (!context) {
-        return;
-      }
-
-      ensureKeepAlive(context);
-
-      if (!videoGainRef.current) {
-        videoGainRef.current = context.createGain();
-        videoGainRef.current.connect(context.destination);
-      }
-
-      if (!videoSourcesRef.current.has(video)) {
-        const source = context.createMediaElementSource(video);
-        source.connect(videoGainRef.current);
-        videoSourcesRef.current.set(video, source);
-      }
-
-      setVideoAudioLevel(volume, false);
-    },
-    [ensureAudioContext, ensureKeepAlive, setVideoAudioLevel],
-  );
-
-  const detachVideoAudio = useCallback((video: HTMLVideoElement) => {
-    const source = videoSourcesRef.current.get(video);
-
-    if (!source) {
-      return;
-    }
-
-    video.muted = true;
-  }, []);
 
   const playRoomPlaylistTrack = useCallback(
     async ({
@@ -567,8 +519,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     () => ({
       hasEntered,
       markEntered,
-      attachVideoAudio,
-      detachVideoAudio,
       playRoomPlaylistTrack,
       playlistGain,
       playlistStatus,
@@ -581,8 +531,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       videoGain,
     }),
     [
-      attachVideoAudio,
-      detachVideoAudio,
       hasEntered,
       markEntered,
       playRoomPlaylistTrack,

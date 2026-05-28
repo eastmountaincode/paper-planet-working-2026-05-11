@@ -38,6 +38,19 @@ const videoUploads = [
   },
 ];
 
+const roomAudioUploads = [
+  {
+    source: "../assets/rooms-20260516/audio/construction-audio.m4a",
+    key: "rooms/construction-audio.m4a",
+    contentType: "audio/mp4",
+  },
+  {
+    source: "../assets/rooms-20260516/audio/hq-audio.m4a",
+    key: "rooms/hq-audio.m4a",
+    contentType: "audio/mp4",
+  },
+];
+
 function getPlaylistUploads() {
   if (!existsSync(playlistManifestFile)) {
     return [];
@@ -152,16 +165,20 @@ function main() {
     env.R2_CACHE_CONTROL || "public, max-age=31536000, immutable";
   const uploadMode = process.argv.includes("--audio-only")
     ? "audio"
-    : process.argv.includes("--video-only")
-      ? "video"
-      : "all";
+    : process.argv.includes("--room-audio-only")
+      ? "room-audio"
+      : process.argv.includes("--video-only")
+        ? "video"
+        : "all";
   const playlistUploads = getPlaylistUploads();
   const uploads =
     uploadMode === "audio"
       ? playlistUploads
-      : uploadMode === "video"
-        ? videoUploads
-        : [...videoUploads, ...playlistUploads];
+      : uploadMode === "room-audio"
+        ? roomAudioUploads
+        : uploadMode === "video"
+          ? [...videoUploads, ...roomAudioUploads]
+          : [...videoUploads, ...roomAudioUploads, ...playlistUploads];
 
   console.log("Verifying R2 bucket access...");
   runAws(

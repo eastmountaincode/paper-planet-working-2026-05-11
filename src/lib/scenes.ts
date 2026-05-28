@@ -92,6 +92,8 @@ export type Scene = {
     audio?: {
       enabled: boolean;
       volume: number;
+      src: string;
+      sourceFile: string;
     };
   };
   playlist?: {
@@ -138,11 +140,13 @@ export type ScenePlaylistData = {
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
 const roomVideoVersion = "20260527-responsive-videos";
+const roomAudioVersion = "20260527-synced-room-audio";
 
 const mediaUrl = (path: string) =>
   `${mediaBaseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 
 const roomVideoUrl = (path: string) => mediaUrl(`${path}?v=${roomVideoVersion}`);
+const roomAudioUrl = (path: string) => mediaUrl(`${path}?v=${roomAudioVersion}`);
 
 type SceneHotspotEntry =
   | Hotspot[]
@@ -256,6 +260,8 @@ export function createScenes(
         audio: {
           enabled: true,
           volume: 0.8,
+          src: roomAudioUrl("rooms/construction-audio.m4a"),
+          sourceFile: "assets/rooms-20260516/audio/construction-audio.m4a",
         },
       },
       playlist: {
@@ -291,6 +297,8 @@ export function createScenes(
         audio: {
           enabled: true,
           volume: 0.8,
+          src: roomAudioUrl("rooms/hq-audio.m4a"),
+          sourceFile: "assets/rooms-20260516/audio/hq-audio.m4a",
         },
       },
       playlist: {

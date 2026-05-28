@@ -493,8 +493,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     useState<SceneViewport | null>(null);
   const searchParams = useSearchParams();
   const {
-    attachVideoAudio,
-    detachVideoAudio,
     hasEntered,
     markEntered,
     playRoomPlaylistTrack,
@@ -508,13 +506,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     unlockRoomPlaylists,
     videoGain,
   } = useEntryState();
-  const videoRef = useRef<HTMLVideoElement>(null);
   const videoElementsRef = useRef<Record<SceneViewport, HTMLVideoElement | null>>(
     {
       desktop: null,
       mobile: null,
     },
   );
+  const roomAudioRef = useRef<HTMLAudioElement>(null);
   const lastVideoTimeRef = useRef(0);
   const sceneViewportRef = useRef<SceneViewport | null>(null);
   const visibleSceneViewportRef = useRef<SceneViewport | null>(null);
@@ -543,6 +541,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
+  const [videoElementStatus, setVideoElementStatus] = useState("pending");
+  const [roomAudioElementStatus, setRoomAudioElementStatus] =
+    useState("pending");
   const [stageTransform, setStageTransform] = useState<StageTransform>(
     DEFAULT_STAGE_TRANSFORM,
   );
@@ -583,6 +584,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const syncedPlayback = scene.video.sync?.enabled ?? false;
   const videoAudioEnabled = scene.video.audio?.enabled ?? false;
   const videoVolume = scene.video.audio?.volume ?? 0.8;
+  const roomAudioSource = scene.video.audio?.src ?? "";
   const playlistEnabled = scene.playlist?.enabled ?? false;
   const playlistTracks = useMemo(
     () => scene.playlist?.tracks ?? [],
@@ -672,6 +674,35 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [getSyncedTime, syncedPlayback],
   );
 
+  const syncRoomAudioElementTime = useCallback(
+    (audio: HTMLAudioElement) => {
+      if (audio.readyState < HTMLMediaElement.HAVE_METADATA) {
+        return;
+      }
+
+      const duration = Number.isFinite(audio.duration)
+        ? audio.duration
+        : scene.video.durationSeconds;
+      const targetTime = syncedPlayback
+        ? getSyncedTime()
+        : lastVideoTimeRef.current;
+
+      if (!Number.isFinite(targetTime) || targetTime < 0) {
+        return;
+      }
+
+      const safeTime =
+        duration > 0
+          ? Math.min(targetTime % duration, Math.max(duration - 0.05, 0))
+          : targetTime;
+
+      if (Math.abs(audio.currentTime - safeTime) > 1.5) {
+        audio.currentTime = safeTime;
+      }
+    },
+    [getSyncedTime, scene.video.durationSeconds, syncedPlayback],
+  );
+
   useEffect(() => {
     stageTransformRef.current = stageTransform;
   }, [stageTransform]);
@@ -682,10 +713,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
   useEffect(() => {
     visibleSceneViewportRef.current = visibleSceneViewport;
-    videoRef.current = visibleSceneViewport
-      ? videoElementsRef.current[visibleSceneViewport]
-      : null;
   }, [visibleSceneViewport, scene.slug]);
+
+  const getVisibleVideoElement = useCallback(() => {
+    const viewport = visibleSceneViewportRef.current ?? sceneViewportRef.current;
+
+    return viewport ? videoElementsRef.current[viewport] : null;
+  }, []);
 
   useEffect(() => {
     const updateSceneViewport = () => {
@@ -714,6 +748,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
       ) {
         syncVideoElementTime(nextVideo);
+        nextVideo.volume = 0;
+        nextVideo.muted = true;
         void nextVideo.play().catch(() => undefined);
         visibleSceneViewportRef.current = nextViewport;
         setVisibleSceneViewport(nextViewport);
@@ -789,12 +825,27 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     if (video) {
       syncVideoElementTime(video);
+      video.volume = 0;
+      video.muted = true;
     }
 
     visibleSceneViewportRef.current = viewport;
     setVisibleSceneViewport(viewport);
     markVideoReady();
   }
+
+  useEffect(() => {
+    for (const viewport of sceneViewports) {
+      const video = videoElementsRef.current[viewport];
+
+      if (!video) {
+        continue;
+      }
+
+      video.volume = 0;
+      video.muted = true;
+    }
+  }, [resolvedSceneViewport, scene.slug]);
 
   const getSyncedPlaylistPosition = useCallback(
     (): SyncedPlaylistPosition | null => {
@@ -819,29 +870,73 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   }, [activePlaylistTrack, hasEntered, primeRoomPlaylistTrack, scene.slug]);
 
   const syncVideoTime = useCallback(() => {
-    const video = videoRef.current;
+    const video = getVisibleVideoElement();
+    const audio = roomAudioRef.current;
 
-    if (!video || !syncedPlayback) {
+    if (!syncedPlayback) {
       return;
     }
 
     const expectedTime = getSyncedTime();
 
     if (
+      video &&
       Number.isFinite(expectedTime) &&
       Math.abs(video.currentTime - expectedTime) > 1.5
     ) {
       video.currentTime = expectedTime;
     }
-  }, [getSyncedTime, syncedPlayback]);
+
+    if (audio) {
+      syncRoomAudioElementTime(audio);
+    }
+  }, [
+    getSyncedTime,
+    getVisibleVideoElement,
+    syncRoomAudioElementTime,
+    syncedPlayback,
+  ]);
+
+  const playRoomAudioElement = useCallback(
+    (muted = !videoAudioActive) => {
+      const audio = roomAudioRef.current;
+
+      if (!audio || !videoAudioEnabled || !roomAudioSource) {
+        setVideoAudioLevel(videoVolume, true);
+        return;
+      }
+
+      audio.volume = videoVolume;
+      audio.muted = muted;
+      setVideoAudioLevel(videoVolume, muted);
+      syncRoomAudioElementTime(audio);
+
+      void audio.play().catch((error: unknown) => {
+        if (isExpectedMediaInterruption(error)) {
+          return;
+        }
+
+        if (!muted) {
+          setAudioError(getMediaErrorMessage(error, "Room audio blocked"));
+        }
+      });
+    },
+    [
+      roomAudioSource,
+      setVideoAudioLevel,
+      syncRoomAudioElementTime,
+      videoAudioActive,
+      videoAudioEnabled,
+      videoVolume,
+    ],
+  );
 
   const resumeRoomMedia = useCallback(() => {
-    const video = videoRef.current;
+    const video = getVisibleVideoElement();
 
     if (video) {
-      video.volume = videoVolume;
-      video.muted = !hasEntered;
-      setVideoAudioLevel(videoVolume, !videoAudioActive);
+      video.volume = 0;
+      video.muted = true;
       syncVideoTime();
 
       void video.play().catch((error: unknown) => {
@@ -854,12 +949,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         }
       });
     }
+
+    playRoomAudioElement(!videoAudioActive);
   }, [
-    hasEntered,
-    setVideoAudioLevel,
+    getVisibleVideoElement,
+    playRoomAudioElement,
     syncVideoTime,
     videoAudioActive,
-    videoVolume,
   ]);
 
   const resumeActivePlaylistAudio = useCallback(
@@ -967,14 +1063,14 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   ]);
 
   useEffect(() => {
-    const video = videoRef.current;
+    const video = getVisibleVideoElement();
 
     if (!video) {
       return;
     }
 
-    video.volume = 1;
-    setVideoAudioLevel(videoVolume, !videoAudioActive);
+    video.volume = 0;
+    video.muted = true;
 
     void video.play().catch((error: unknown) => {
       if (isExpectedMediaInterruption(error)) {
@@ -987,32 +1083,97 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     });
   }, [
     activeVideoSource.src,
-    sceneViewport,
-    setVideoAudioLevel,
+    getVisibleVideoElement,
+    resolvedSceneViewport,
     videoAudioActive,
+  ]);
+
+  useEffect(() => {
+    const audio = roomAudioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.volume = videoVolume;
+    audio.muted = !videoAudioActive;
+    setVideoAudioLevel(videoVolume, !videoAudioActive);
+    syncRoomAudioElementTime(audio);
+
+    if (hasEntered && videoAudioEnabled && roomAudioSource) {
+      void audio.play().catch((error: unknown) => {
+        if (isExpectedMediaInterruption(error)) {
+          return;
+        }
+
+        if (videoAudioActive) {
+          setAudioError(getMediaErrorMessage(error, "Room audio blocked"));
+        }
+      });
+    }
+  }, [
+    hasEntered,
+    roomAudioSource,
+    setVideoAudioLevel,
+    syncRoomAudioElementTime,
+    videoAudioActive,
+    videoAudioEnabled,
     videoVolume,
   ]);
 
   useEffect(() => {
-    const video = videoRef.current;
+    const updateVideoElementStatus = () => {
+      const video = getVisibleVideoElement();
 
-    if (!video || !hasEntered) {
-      return;
-    }
+      if (!video) {
+        setVideoElementStatus("no element");
+        return;
+      }
 
-    void attachVideoAudio(video, videoVolume).catch((error: unknown) => {
-      setAudioError(getMediaErrorMessage(error, "Video audio mixer blocked"));
-    });
+      const sourceName = video.currentSrc
+        ? (video.currentSrc.split("/").at(-1) ?? "loaded")
+        : "no src";
+
+      setVideoElementStatus(
+        `${sourceName} / ${video.muted ? "muted" : "unmuted"} / vol ${video.volume.toFixed(
+          2,
+        )} / ${video.paused ? "paused" : "playing"} / ready ${
+          video.readyState
+        } / net ${video.networkState}`,
+      );
+
+      const audio = roomAudioRef.current;
+
+      if (!audio) {
+        setRoomAudioElementStatus("no element");
+        return;
+      }
+
+      const audioSourceName = audio.currentSrc
+        ? (audio.currentSrc.split("/").at(-1) ?? "loaded")
+        : "no src";
+
+      setRoomAudioElementStatus(
+        `${audioSourceName} / ${audio.muted ? "muted" : "unmuted"} / vol ${audio.volume.toFixed(
+          2,
+        )} / ${audio.paused ? "paused" : "playing"} / ${audio.currentTime.toFixed(
+          1,
+        )}s / ready ${audio.readyState} / net ${audio.networkState}`,
+      );
+    };
+
+    updateVideoElementStatus();
+    const interval = window.setInterval(updateVideoElementStatus, 1000);
 
     return () => {
-      detachVideoAudio(video);
+      window.clearInterval(interval);
     };
   }, [
-    activeVideoSource.src,
-    attachVideoAudio,
-    detachVideoAudio,
-    hasEntered,
-    sceneViewport,
+    getVisibleVideoElement,
+    resolvedSceneViewport,
+    roomAudioSource,
+    scene.slug,
+    videoAudioActive,
     videoVolume,
   ]);
 
@@ -1126,7 +1287,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   ]);
 
   async function enterPlanet() {
-    const video = videoRef.current;
+    const video = getVisibleVideoElement();
     const playPromises: Promise<unknown>[] = [];
 
     setAudioError(null);
@@ -1167,8 +1328,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     }
 
     if (video && videoAudioEnabled) {
-      playPromises.push(attachVideoAudio(video, videoVolume));
-      video.muted = false;
+      video.volume = 0;
+      video.muted = true;
       setVideoAudioLevel(videoVolume, false);
 
       if (syncedPlayback) {
@@ -1176,6 +1337,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       }
 
       playPromises.push(video.play());
+    }
+
+    if (videoAudioEnabled && roomAudioSource) {
+      const audio = roomAudioRef.current;
+
+      if (audio) {
+        audio.volume = videoVolume;
+        audio.muted = false;
+        syncRoomAudioElementTime(audio);
+        playPromises.push(audio.play());
+      }
     }
 
     const results = await Promise.allSettled(playPromises);
@@ -1191,7 +1363,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   }
 
   function toggleVideoAudio() {
-    const video = videoRef.current;
+    const video = getVisibleVideoElement();
 
     if (!hasEntered) {
       void enterPlanet();
@@ -1200,9 +1372,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
     const nextMuted = !videoAudioMuted;
     setVideoAudioMuted(nextMuted);
+    setVideoAudioLevel(videoVolume, nextMuted || !videoAudioEnabled);
 
     if (video) {
-      setVideoAudioLevel(videoVolume, nextMuted || !videoAudioEnabled);
+      video.volume = 0;
+      video.muted = true;
+    }
+
+    const audio = roomAudioRef.current;
+
+    if (audio) {
+      audio.volume = videoVolume;
+      audio.muted = nextMuted || !videoAudioEnabled;
     }
 
     resumeActivePlaylistAudio();
@@ -1710,6 +1891,20 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           crossOrigin="anonymous"
         />
       ) : null}
+      {roomAudioSource ? (
+        <audio
+          ref={roomAudioRef}
+          src={roomAudioSource}
+          loop
+          preload="auto"
+          crossOrigin="anonymous"
+          muted={!videoAudioActive}
+          onLoadedMetadata={(event) => {
+            event.currentTarget.volume = videoVolume;
+            syncRoomAudioElementTime(event.currentTarget);
+          }}
+        />
+      ) : null}
       <section
         className={classNames(
           "flex h-dvh touch-none items-center justify-center overflow-hidden p-3 sm:p-5",
@@ -1742,13 +1937,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
                   return (
                     <video
-                      key={`${scene.slug}:${viewport}`}
+                      key={`${scene.slug}:${viewport}:native-audio`}
                       ref={(element) => {
                         videoElementsRef.current[viewport] = element;
-
-                        if (isVisible) {
-                          videoRef.current = element;
-                        }
                       }}
                       className={classNames(
                         "absolute inset-0 z-0 h-full w-full object-cover",
@@ -1758,7 +1949,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                       crossOrigin="anonymous"
                       src={videoSource.src}
                       autoPlay
-                      muted={!hasEntered || !isVisible}
+                      muted
                       loop
                       playsInline
                       preload="auto"
@@ -1767,7 +1958,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         isVisible ? `${scene.title} room video` : undefined
                       }
                       onLoadedMetadata={(event) => {
-                        event.currentTarget.volume = isVisible ? videoVolume : 0;
+                        event.currentTarget.volume = 0;
+                        event.currentTarget.muted = true;
                         syncVideoElementTime(event.currentTarget);
                       }}
                       onTimeUpdate={(event) => {
@@ -2058,6 +2250,12 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                   </button>
                 ) : null}
               </div>
+              <p className="break-words text-white/45">
+                Room audio: {roomAudioElementStatus}
+              </p>
+              <p className="break-words text-white/45">
+                Visual video: {videoElementStatus}
+              </p>
               <p className="text-white/60">
                 Playlist:{" "}
                 {playlistEnabled
