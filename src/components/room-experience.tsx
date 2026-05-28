@@ -38,6 +38,7 @@ import {
   hotspotManifestToSceneHotspots,
   normalizeHotspotManifest,
 } from "@/lib/hotspot-manifest";
+import { normalizeSiteSettingsManifest } from "@/lib/site-settings";
 import { EnterArtworkButton } from "@/components/enter-artwork-button";
 
 type RoomExperienceProps = {
@@ -190,6 +191,7 @@ const MAX_STAGE_SCALE = 3;
 const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
 const PLAYLIST_METADATA_TOAST_MS = 6200;
+const LOADING_PREVIEW_MS = 3200;
 const MUSIC_NOTE_ICON_SRC = "/icons/music_note_icon.png";
 const LOADING_GIF_SRC = "/loading/paper-planet-loading.gif";
 const helperUnlockStorageKey = "paper-planet-helper-unlocked";
@@ -563,8 +565,12 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const helperUnlockedByUrl = helperParamValue === helperUnlockValue;
   const helperLockedByUrl = helperParamValue === "0";
   const helperInitiallyUnlocked = helperUnlockedByDefault || helperUnlockedByUrl;
+  const helperInitiallyExplicitlyUnlocked = helperUnlockedByUrl;
   const [devPanelUnlocked, setDevPanelUnlocked] = useState(
     helperInitiallyUnlocked,
+  );
+  const [devPanelExplicitlyUnlocked, setDevPanelExplicitlyUnlocked] = useState(
+    helperInitiallyExplicitlyUnlocked,
   );
   const debugHotspots =
     devPanelUnlocked &&
@@ -575,7 +581,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     useState<PointerPosition | null>(null);
   const [devPanelOpen, setDevPanelOpen] = useState(helperInitiallyUnlocked);
   const [devBorders, setDevBorders] = useState(
-    helperInitiallyUnlocked && searchParams.get("dev") === "1",
+    helperInitiallyExplicitlyUnlocked && searchParams.get("dev") === "1",
   );
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
@@ -584,10 +590,12 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [playlistStartTime, setPlaylistStartTime] = useState(0);
   const [metadataToast, setMetadataToast] =
     useState<PlaylistMetadataToast | null>(null);
+  const [loadingPreviewVisible, setLoadingPreviewVisible] = useState(false);
   const fadeOutInProgressRef = useRef(false);
   const navigationIdRef = useRef(0);
   const metadataToastIdRef = useRef(0);
   const metadataToastTimeoutRef = useRef<number | null>(null);
+  const loadingPreviewTimeoutRef = useRef<number | null>(null);
   const lastMetadataToastKeyRef = useRef<string | null>(null);
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
@@ -662,6 +670,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (helperLockedByUrl) {
         window.localStorage.removeItem(helperUnlockStorageKey);
         setDevPanelUnlocked(false);
+        setDevPanelExplicitlyUnlocked(false);
         setDevPanelOpen(false);
         setDevBorders(false);
         return;
@@ -670,13 +679,16 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (helperUnlockedByUrl) {
         window.localStorage.setItem(helperUnlockStorageKey, "1");
         setDevPanelUnlocked(true);
+        setDevPanelExplicitlyUnlocked(true);
         setDevPanelOpen(true);
         return;
       }
 
-      setDevPanelUnlocked(
-        window.localStorage.getItem(helperUnlockStorageKey) === "1",
-      );
+      const storedUnlock =
+        window.localStorage.getItem(helperUnlockStorageKey) === "1";
+
+      setDevPanelUnlocked(storedUnlock);
+      setDevPanelExplicitlyUnlocked(storedUnlock);
     }, 0);
 
     return () => {
@@ -689,6 +701,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [activeHotspots],
   );
   const transitionActive = isExiting || !videoReady;
+  const loadingOverlayActive = transitionActive || loadingPreviewVisible;
+  const borderShortcutEnabled = devPanelUnlocked && devPanelExplicitlyUnlocked;
   const stageTransformStyle = useMemo(
     () => ({
       transform: `translate3d(${stageTransform.x}px, ${stageTransform.y}px, 0) scale(${stageTransform.scale})`,
@@ -736,6 +750,19 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     },
     [activePlaylistTrack, showMetadataToast],
   );
+
+  const showLoadingPreview = useCallback(() => {
+    setLoadingPreviewVisible(true);
+
+    if (loadingPreviewTimeoutRef.current) {
+      window.clearTimeout(loadingPreviewTimeoutRef.current);
+    }
+
+    loadingPreviewTimeoutRef.current = window.setTimeout(() => {
+      setLoadingPreviewVisible(false);
+      loadingPreviewTimeoutRef.current = null;
+    }, LOADING_PREVIEW_MS);
+  }, []);
 
   const getSyncedTime = useCallback(
     () => {
@@ -862,6 +889,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (metadataToastTimeoutRef.current) {
         window.clearTimeout(metadataToastTimeoutRef.current);
       }
+
+      if (loadingPreviewTimeoutRef.current) {
+        window.clearTimeout(loadingPreviewTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -869,9 +900,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     let isCanceled = false;
 
     async function loadRuntimeManifests() {
-      const [playlistResponse, hotspotResponse] = await Promise.all([
+      const [playlistResponse, hotspotResponse, settingsResponse] = await Promise.all([
         fetch("/api/playlists", { cache: "no-store" }).catch(() => null),
         fetch("/api/hotspots", { cache: "no-store" }).catch(() => null),
+        fetch("/api/settings", { cache: "no-store" }).catch(() => null),
       ]);
 
       const playlistResult = playlistResponse?.ok
@@ -880,11 +912,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       const hotspotResult = hotspotResponse?.ok
         ? ((await hotspotResponse.json()) as { manifest?: unknown })
         : {};
+      const settingsResult = settingsResponse?.ok
+        ? ((await settingsResponse.json()) as { manifest?: unknown })
+        : {};
       const playlistManifest = normalizePlaylistManifest(playlistResult.manifest);
       const hotspotManifest = normalizeHotspotManifest(hotspotResult.manifest);
+      const settingsManifest = normalizeSiteSettingsManifest(
+        settingsResult.manifest,
+      );
       const nextScenes = createScenes(
         playlistManifestToScenePlaylists(playlistManifest),
         hotspotManifestToSceneHotspots(hotspotManifest),
+        settingsManifest,
       );
       const nextScene = nextScenes[sceneSlugRef.current] ?? nextScenes.construction;
       const nextPosition = getInitialPlaylistPosition(nextScene);
@@ -1148,7 +1187,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      if (key === "b") {
+      if (key === "b" && borderShortcutEnabled) {
         setDevBorders((current) => !current);
       }
 
@@ -1162,7 +1201,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [devPanelUnlocked]);
+  }, [borderShortcutEnabled, devPanelUnlocked]);
 
   useEffect(() => {
     if (!syncedPlayback) {
@@ -2260,19 +2299,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       <div
         className={classNames(
           "fixed inset-0 z-40 flex items-center justify-center bg-black transition-opacity duration-200",
-          transitionActive
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0",
+          loadingOverlayActive ? "opacity-100" : "opacity-0",
+          transitionActive ? "pointer-events-auto" : "pointer-events-none",
           devOutline(devBorders, 4),
         )}
         aria-hidden="true"
       >
-        {transitionActive ? (
+        {loadingOverlayActive ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={LOADING_GIF_SRC}
             alt=""
-            className="block w-28 select-none sm:w-36"
+            className="block w-96 select-none md:w-[30rem]"
             draggable={false}
           />
         ) : null}
@@ -2489,7 +2527,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         showMetadataToast(
                           "The Extraordinary Paper Planet Construction Parade",
                           activePlaylistTrack.album,
-                          activePlaylistTrack.artist,
+                          "Paper Planet Players",
                         )
                       }
                       className={classNames(
@@ -2505,7 +2543,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         showMetadataToast(
                           activePlaylistTrack.title,
                           "The Complete Songs From The Long Walk Through Paper Planet",
-                          activePlaylistTrack.artist,
+                          "Connor W.",
                         )
                       }
                       className={classNames(
@@ -2521,7 +2559,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                         showMetadataToast(
                           "Conito's Way",
                           "Alpaulccino",
-                          "Connor",
+                          "Connor Wilson",
                         )
                       }
                       className={classNames(
@@ -2562,6 +2600,18 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
               )}
             >
               <p>Scene: {scene.slug}</p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={showLoadingPreview}
+                  className={classNames(
+                    "cursor-pointer border border-white/30 px-1.5 py-1 uppercase text-white hover:border-white",
+                    devOutline(devBorders, 3),
+                  )}
+                >
+                  Show loading
+                </button>
+              </div>
               <p>
                 Video: {sceneViewport ?? "detecting"} / {activeVideoSource.width}x
                 {activeVideoSource.height} / {scene.video.durationSeconds.toFixed(3)}s

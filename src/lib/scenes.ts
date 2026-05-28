@@ -1,5 +1,9 @@
 import sceneHotspotsData from "./scene-hotspots.json";
 import scenePlaylistsData from "./scene-playlists.json";
+import {
+  createStaticSiteSettingsManifest,
+  type SiteSettingsManifest,
+} from "@/lib/site-settings";
 
 export type SceneSlug = "construction" | "hq";
 export type SceneViewport = "desktop" | "mobile";
@@ -221,6 +225,7 @@ function getPlaylistTracks(
 export function createScenes(
   playlists: Record<SceneSlug, ScenePlaylistData> = scenePlaylists,
   hotspots: SceneHotspotsData = sceneHotspots,
+  settings: SiteSettingsManifest = createStaticSiteSettingsManifest(),
 ): Record<SceneSlug, Scene> {
   const constructionVideoSources = {
     desktop: createSceneVideoSource(
@@ -266,7 +271,7 @@ export function createScenes(
         },
         audio: {
           enabled: true,
-          volume: 0.8,
+          volume: settings.rooms.construction.roomAudioVolume,
           src: roomAudioUrl("rooms/construction-audio.m4a"),
           sourceFile: "assets/rooms-20260516/audio/construction-audio.m4a",
         },
@@ -275,7 +280,7 @@ export function createScenes(
         enabled: true,
         name: playlists.construction.name,
         folder: playlists.construction.folder,
-        volume: 0.65,
+        volume: settings.rooms.construction.playlistVolume,
         sync: {
           enabled: true,
         },
@@ -303,7 +308,7 @@ export function createScenes(
         },
         audio: {
           enabled: true,
-          volume: 0.8,
+          volume: settings.rooms.hq.roomAudioVolume,
           src: roomAudioUrl("rooms/hq-audio.m4a"),
           sourceFile: "assets/rooms-20260516/audio/hq-audio.m4a",
         },
@@ -312,7 +317,7 @@ export function createScenes(
         enabled: true,
         name: playlists.hq.name,
         folder: playlists.hq.folder,
-        volume: 0.65,
+        volume: settings.rooms.hq.playlistVolume,
         sync: {
           enabled: true,
         },

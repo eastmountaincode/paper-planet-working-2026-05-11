@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AudioAdmin } from "@/components/admin/audio-admin";
 import { FontAdmin } from "@/components/admin/font-admin";
+import { SettingsAdmin } from "@/components/admin/settings-admin";
 
 type AdminTab = "audio" | "hotspots" | "font" | "settings";
 
@@ -93,12 +94,7 @@ export function AdminShell() {
             </section>
           ) : null}
           {activeTab === "font" ? <FontAdmin /> : null}
-          {activeTab === "settings" ? (
-            <section className="grid gap-2">
-              <h2 className="text-lg font-semibold">Settings</h2>
-              <p className="text-sm text-white/60">No settings yet.</p>
-            </section>
-          ) : null}
+          {activeTab === "settings" ? <SettingsAdmin /> : null}
         </div>
       </div>
     </main>
