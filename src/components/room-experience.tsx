@@ -628,12 +628,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const helperUnlockedByUrl = helperParamValue === helperUnlockValue;
   const helperLockedByUrl = helperParamValue === "0";
   const helperInitiallyUnlocked = helperUnlockedByDefault || helperUnlockedByUrl;
-  const helperInitiallyExplicitlyUnlocked = helperUnlockedByUrl;
   const [devPanelUnlocked, setDevPanelUnlocked] = useState(
     helperInitiallyUnlocked,
-  );
-  const [devPanelExplicitlyUnlocked, setDevPanelExplicitlyUnlocked] = useState(
-    helperInitiallyExplicitlyUnlocked,
   );
   const debugHotspots =
     devPanelUnlocked &&
@@ -643,9 +639,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [pointerPosition, setPointerPosition] =
     useState<PointerPosition | null>(null);
   const [devPanelOpen, setDevPanelOpen] = useState(helperInitiallyUnlocked);
-  const [devBorders, setDevBorders] = useState(
-    helperInitiallyExplicitlyUnlocked && searchParams.get("dev") === "1",
+  const [devBordersEnabled, setDevBordersEnabled] = useState(
+    helperUnlockedByUrl && searchParams.get("dev") === "1",
   );
+  const devBorders = devBordersEnabled && helperUnlockedByUrl;
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [playlistAudioMuted, setPlaylistAudioMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -733,16 +730,14 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (helperLockedByUrl) {
         window.localStorage.removeItem(helperUnlockStorageKey);
         setDevPanelUnlocked(false);
-        setDevPanelExplicitlyUnlocked(false);
         setDevPanelOpen(false);
-        setDevBorders(false);
+        setDevBordersEnabled(false);
         return;
       }
 
       if (helperUnlockedByUrl) {
         window.localStorage.setItem(helperUnlockStorageKey, "1");
         setDevPanelUnlocked(true);
-        setDevPanelExplicitlyUnlocked(true);
         setDevPanelOpen(true);
         return;
       }
@@ -751,7 +746,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         window.localStorage.getItem(helperUnlockStorageKey) === "1";
 
       setDevPanelUnlocked(storedUnlock);
-      setDevPanelExplicitlyUnlocked(storedUnlock);
     }, 0);
 
     return () => {
@@ -765,7 +759,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   );
   const transitionActive = isExiting || !videoReady;
   const loadingOverlayActive = transitionActive || loadingPreviewVisible;
-  const borderShortcutEnabled = devPanelUnlocked && devPanelExplicitlyUnlocked;
+  const borderShortcutEnabled = devPanelUnlocked && helperUnlockedByUrl;
   const stageTransformStyle = useMemo(
     () => ({
       transform: `translate3d(${stageTransform.x}px, ${stageTransform.y}px, 0) scale(${stageTransform.scale})`,
@@ -1246,7 +1240,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       }
 
       if (key === "b" && borderShortcutEnabled) {
-        setDevBorders((current) => !current);
+        setDevBordersEnabled((current) => !current);
       }
 
       if (key === "h") {
