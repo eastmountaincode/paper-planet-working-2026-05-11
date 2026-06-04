@@ -66,19 +66,12 @@ type PlaylistStatus = {
 };
 
 type PlaylistPlayback = {
-  buffer: AudioBuffer;
-  duration: number;
-  offset: number;
   requestId: number;
   room: SceneSlug;
-  source: AudioBufferSourceNode;
   src: string;
-  startedAt: number;
 };
 
 const EntryContext = createContext<EntryContextValue | null>(null);
-const KEEP_ALIVE_GAIN = 0.00001;
-const AUDIO_RAMP_SECONDS = 0.2;
 
 const initialPlaylistStatus: PlaylistStatus = {
   currentSrc: "",
@@ -91,37 +84,65 @@ const initialPlaylistStatus: PlaylistStatus = {
   room: "",
 };
 
-function getCurrentPlaybackTime(
-  context: AudioContext | null,
-  playback: PlaylistPlayback | null,
-) {
-  if (!context || !playback) {
-    return 0;
+function getMediaErrorMessage(audio: HTMLAudioElement | null) {
+  if (!audio?.error) {
+    return "Playlist audio failed";
   }
 
-  return Math.min(
-    playback.duration,
-    Math.max(0, context.currentTime - playback.startedAt + playback.offset),
-  );
+  switch (audio.error.code) {
+    case MediaError.MEDIA_ERR_ABORTED:
+      return "Playlist audio request was aborted";
+    case MediaError.MEDIA_ERR_NETWORK:
+      return "Playlist audio failed because of a network error";
+    case MediaError.MEDIA_ERR_DECODE:
+      return "Playlist audio could not be decoded";
+    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return "Playlist audio source is not supported";
+    default:
+      return "Playlist audio failed";
+  }
 }
 
-function rampGain(gain: GainNode, value: number) {
-  const now = gain.context.currentTime;
+function clampMediaTime(audio: HTMLAudioElement, time: number) {
+  const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
 
-  gain.gain.cancelScheduledValues(now);
-  gain.gain.setValueAtTime(gain.gain.value, now);
-  gain.gain.linearRampToValueAtTime(value, now + AUDIO_RAMP_SECONDS);
+  if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+    return safeTime;
+  }
+
+  return Math.min(safeTime, Math.max(audio.duration - 0.05, 0));
+}
+
+function waitForPlaylistMetadata(audio: HTMLAudioElement) {
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("error", handleError);
+    };
+    const handleLoadedMetadata = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error(getMediaErrorMessage(audio)));
+    };
+
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata, {
+      once: true,
+    });
+    audio.addEventListener("error", handleError, { once: true });
+  });
 }
 
 export function EntryProvider({ children }: { children: ReactNode }) {
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioBufferPromisesRef = useRef(new Map<string, Promise<AudioBuffer>>());
-  const keepAliveRef = useRef<{
-    gain: GainNode;
-    oscillator: OscillatorNode;
-  } | null>(null);
+  const playlistAudioRef = useRef<HTMLAudioElement | null>(null);
+  const primedPlaylistSourcesRef = useRef(new Set<string>());
   const playlistPlaybackRef = useRef<PlaylistPlayback | null>(null);
-  const playlistGainRef = useRef<GainNode | null>(null);
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
   const playlistRequestIdRef = useRef(0);
   const activePlaylistRoomRef = useRef<SceneSlug | null>(null);
@@ -136,80 +157,22 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     setHasEntered(true);
   }, []);
 
-  const ensureAudioContext = useCallback(() => {
-    if (!audioContextRef.current) {
-      const AudioContextConstructor =
-        window.AudioContext ||
-        (window as typeof window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-
-      if (!AudioContextConstructor) {
-        return null;
-      }
-
-      audioContextRef.current = new AudioContextConstructor();
-    }
-
-    if (audioContextRef.current.state === "suspended") {
-      void audioContextRef.current.resume().catch(() => undefined);
-    }
-
-    return audioContextRef.current;
-  }, []);
-
-  const ensureKeepAlive = useCallback((context: AudioContext) => {
-    if (keepAliveRef.current) {
-      return;
-    }
-
-    const gain = context.createGain();
-    const oscillator = context.createOscillator();
-
-    gain.gain.value = KEEP_ALIVE_GAIN;
-    oscillator.frequency.value = 20;
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start();
-    keepAliveRef.current = { gain, oscillator };
-  }, []);
-
-  const ensurePlaylistGain = useCallback(() => {
-    const context = ensureAudioContext();
-
-    if (!context) {
-      return null;
-    }
-
-    ensureKeepAlive(context);
-
-    if (!playlistGainRef.current) {
-      playlistGainRef.current = context.createGain();
-      playlistGainRef.current.gain.value = 0;
-      playlistGainRef.current.connect(context.destination);
-    }
-
-    return {
-      context,
-      gain: playlistGainRef.current,
-    };
-  }, [ensureAudioContext, ensureKeepAlive]);
-
   const updatePlaylistStatus = useCallback(
     (
       eventName: string,
       overrides: Partial<PlaylistStatus> = {},
     ) => {
-      const context = audioContextRef.current;
+      const audio = playlistAudioRef.current;
       const playback = playlistPlaybackRef.current;
       const activeRoom = activePlaylistRoomRef.current;
       const nextStatus: PlaylistStatus = {
-        currentSrc: playback?.src ?? "",
-        currentTime: getCurrentPlaybackTime(context, playback),
+        currentSrc: audio?.currentSrc || playback?.src || "",
+        currentTime: audio?.currentTime ?? 0,
         error: null,
         lastEvent: eventName,
-        networkState: playback ? 1 : 0,
-        paused: !playback,
-        readyState: playback ? 4 : 0,
+        networkState: audio?.networkState ?? 0,
+        paused: audio?.paused ?? true,
+        readyState: audio?.readyState ?? 0,
         room: activeRoom ?? "",
         ...overrides,
       };
@@ -219,57 +182,50 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const preloadAudioBuffer = useCallback(
-    (src: string) => {
-      const mixer = ensurePlaylistGain();
-
-      if (!mixer) {
-        return Promise.reject(new Error("Web Audio is not available"));
-      }
-
-      const { context } = mixer;
+  const primeRoomPlaylistTrack = useCallback(
+    (room: SceneSlug, src: string) => {
       const absoluteSrc = new URL(src, window.location.href).href;
-      const cachedPromise = audioBufferPromisesRef.current.get(absoluteSrc);
 
-      if (cachedPromise) {
-        return cachedPromise;
+      if (primedPlaylistSourcesRef.current.has(absoluteSrc)) {
+        return;
       }
 
-      const bufferPromise = fetch(absoluteSrc)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(
-              `Audio request failed: ${response.status} ${response.statusText}`,
-            );
+      primedPlaylistSourcesRef.current.add(absoluteSrc);
+
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.crossOrigin = "anonymous";
+      audio.src = absoluteSrc;
+      audio.addEventListener(
+        "loadedmetadata",
+        () => {
+          if (activePlaylistRoomRef.current === room) {
+            updatePlaylistStatus("primed", { currentSrc: absoluteSrc, room });
           }
+        },
+        { once: true },
+      );
+      audio.addEventListener(
+        "error",
+        () => {
+          primedPlaylistSourcesRef.current.delete(absoluteSrc);
 
-          return response.arrayBuffer();
-        })
-        .then((arrayBuffer) => context.decodeAudioData(arrayBuffer.slice(0)));
-
-      audioBufferPromisesRef.current.set(absoluteSrc, bufferPromise);
-      return bufferPromise;
+          if (activePlaylistRoomRef.current === room) {
+            updatePlaylistStatus("prime-error", {
+              currentSrc: absoluteSrc,
+              error: getMediaErrorMessage(audio),
+              networkState: audio.networkState,
+              readyState: audio.readyState,
+              room,
+            });
+          }
+        },
+        { once: true },
+      );
+      audio.load();
     },
-    [ensurePlaylistGain],
+    [updatePlaylistStatus],
   );
-
-  const stopPlaylistSource = useCallback(() => {
-    const playback = playlistPlaybackRef.current;
-
-    if (!playback) {
-      return;
-    }
-
-    playback.source.onended = null;
-
-    try {
-      playback.source.stop();
-    } catch {
-      // Already stopped.
-    }
-
-    playlistPlaybackRef.current = null;
-  }, []);
 
   const setVideoAudioLevel = useCallback((volume: number, muted: boolean) => {
     const nextGain = muted ? 0 : volume;
@@ -279,35 +235,39 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const setRoomPlaylistAudioLevel = useCallback(
     (room: SceneSlug, volume: number, muted: boolean) => {
       const nextGain = muted ? 0 : volume;
+      const audio = playlistAudioRef.current;
 
       if (activePlaylistRoomRef.current === room) {
         setPlaylistGain(nextGain);
       }
 
-      if (!playlistGainRef.current || activePlaylistRoomRef.current !== room) {
+      if (!audio || activePlaylistRoomRef.current !== room) {
         return;
       }
 
-      rampGain(playlistGainRef.current, nextGain);
+      audio.volume = volume;
+      audio.muted = muted;
+      updatePlaylistStatus("level", { room });
     },
-    [],
+    [updatePlaylistStatus],
   );
 
   const setActivePlaylistRoom = useCallback(
     (room: SceneSlug, volume: number, muted: boolean) => {
-      const mixer = ensurePlaylistGain();
       const nextGain = muted ? 0 : volume;
+      const audio = playlistAudioRef.current;
 
       activePlaylistRoomRef.current = room;
       setPlaylistGain(nextGain);
 
-      if (mixer) {
-        rampGain(mixer.gain, nextGain);
+      if (audio) {
+        audio.volume = volume;
+        audio.muted = muted;
       }
 
       updatePlaylistStatus("active-room", { room });
     },
-    [ensurePlaylistGain, updatePlaylistStatus],
+    [updatePlaylistStatus],
   );
 
   const playRoomPlaylistTrack = useCallback(
@@ -319,13 +279,12 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       muted = false,
       onEnded,
     }: PlayRoomPlaylistTrackOptions) => {
-      const mixer = ensurePlaylistGain();
+      const audio = playlistAudioRef.current;
 
-      if (!mixer) {
+      if (!audio) {
         return;
       }
 
-      const { context, gain } = mixer;
       const requestId = playlistRequestIdRef.current + 1;
       const absoluteSrc = new URL(src, window.location.href).href;
       const currentPlayback = playlistPlaybackRef.current;
@@ -335,12 +294,16 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       playlistEndedHandlerRef.current = onEnded ?? null;
 
       if (currentPlayback?.src === absoluteSrc && currentPlayback.room === room) {
-        const currentTime = getCurrentPlaybackTime(context, currentPlayback);
-
-        if (Math.abs(currentTime - startTime) <= 1.5) {
+        if (Math.abs(audio.currentTime - startTime) <= 1.5) {
           activePlaylistRoomRef.current = room;
           setPlaylistGain(nextGain);
-          rampGain(gain, nextGain);
+          audio.volume = volume;
+          audio.muted = muted;
+
+          if (!muted && audio.paused) {
+            await audio.play();
+          }
+
           updatePlaylistStatus("play-reused", { room });
           return;
         }
@@ -355,54 +318,47 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        const buffer = await preloadAudioBuffer(absoluteSrc);
+        activePlaylistRoomRef.current = room;
+        setPlaylistGain(nextGain);
+        audio.volume = volume;
+        audio.muted = muted;
+        audio.preload = "auto";
+        audio.crossOrigin = "anonymous";
+
+        if (audio.src !== absoluteSrc) {
+          audio.src = absoluteSrc;
+          audio.load();
+        }
+
+        const playback: PlaylistPlayback = {
+          requestId,
+          room,
+          src: absoluteSrc,
+        };
 
         if (playlistRequestIdRef.current !== requestId) {
           return;
         }
 
-        const offset = Math.min(
-          Math.max(0, Number.isFinite(startTime) ? startTime : 0),
-          Math.max(buffer.duration - 0.05, 0),
-        );
-        const source = context.createBufferSource();
-        const playback: PlaylistPlayback = {
-          buffer,
-          duration: buffer.duration,
-          offset,
-          requestId,
-          room,
-          source,
-          src: absoluteSrc,
-          startedAt: context.currentTime,
-        };
+        await waitForPlaylistMetadata(audio);
 
-        activePlaylistRoomRef.current = room;
-        setPlaylistGain(nextGain);
-        rampGain(gain, nextGain);
-        stopPlaylistSource();
-        source.buffer = buffer;
-        source.connect(gain);
-        source.onended = () => {
-          if (
-            playlistPlaybackRef.current?.requestId !== requestId ||
-            getCurrentPlaybackTime(context, playback) < playback.duration - 0.25
-          ) {
-            return;
-          }
+        if (playlistRequestIdRef.current !== requestId) {
+          return;
+        }
 
-          playlistPlaybackRef.current = null;
-          updatePlaylistStatus("ended", {
-            currentSrc: absoluteSrc,
-            currentTime: playback.duration,
-            paused: true,
-            room,
-          });
-          playlistEndedHandlerRef.current?.();
-        };
+        const offset = clampMediaTime(audio, startTime);
+
+        if (Math.abs(audio.currentTime - offset) > 0.5) {
+          audio.currentTime = offset;
+        }
+
         playlistPlaybackRef.current = playback;
-        source.start(0, offset);
-        updatePlaylistStatus("playing", { room });
+        await audio.play();
+        updatePlaylistStatus("playing", {
+          currentSrc: absoluteSrc,
+          currentTime: audio.currentTime,
+          room,
+        });
       } catch (error: unknown) {
         if (playlistRequestIdRef.current === requestId) {
           updatePlaylistStatus("error", {
@@ -419,65 +375,33 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [ensurePlaylistGain, preloadAudioBuffer, stopPlaylistSource, updatePlaylistStatus],
-  );
-
-  const primeRoomPlaylistTrack = useCallback(
-    (room: SceneSlug, src: string) => {
-      const absoluteSrc = new URL(src, window.location.href).href;
-
-      void preloadAudioBuffer(absoluteSrc)
-        .then(() => {
-          if (activePlaylistRoomRef.current === room) {
-            updatePlaylistStatus("primed", { currentSrc: absoluteSrc, room });
-          }
-        })
-        .catch((error: unknown) => {
-          if (activePlaylistRoomRef.current === room) {
-            updatePlaylistStatus("prime-error", {
-              currentSrc: absoluteSrc,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Playlist preload failed",
-              networkState: 3,
-              room,
-            });
-          }
-        });
-    },
-    [preloadAudioBuffer, updatePlaylistStatus],
+    [updatePlaylistStatus],
   );
 
   const resumeRoomPlaylistAudio = useCallback(
     async (room: SceneSlug, volume: number, muted: boolean) => {
-      const context = ensureAudioContext();
+      const audio = playlistAudioRef.current;
 
-      if (!context) {
+      if (!audio) {
         return;
       }
 
-      ensureKeepAlive(context);
       setRoomPlaylistAudioLevel(room, volume, muted);
       updatePlaylistStatus("resume-request", { room });
+
+      if (!muted && audio.src && audio.paused) {
+        await audio.play();
+        updatePlaylistStatus("resumed", { room });
+      }
     },
-    [
-      ensureAudioContext,
-      ensureKeepAlive,
-      setRoomPlaylistAudioLevel,
-      updatePlaylistStatus,
-    ],
+    [setRoomPlaylistAudioLevel, updatePlaylistStatus],
   );
 
   const unlockRoomPlaylists = useCallback(
     async (options: UnlockRoomPlaylistOptions[]) => {
-      const mixer = ensurePlaylistGain();
-
-      if (!mixer) {
+      if (!playlistAudioRef.current) {
         return;
       }
-
-      ensureKeepAlive(mixer.context);
 
       for (const option of options) {
         if (!option.active) {
@@ -496,12 +420,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         muted: Boolean(activeOption.muted),
       });
     },
-    [
-      ensureKeepAlive,
-      ensurePlaylistGain,
-      playRoomPlaylistTrack,
-      primeRoomPlaylistTrack,
-    ],
+    [playRoomPlaylistTrack, primeRoomPlaylistTrack],
   );
 
   useEffect(() => {
@@ -547,7 +466,42 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <EntryContext.Provider value={value}>{children}</EntryContext.Provider>
+    <EntryContext.Provider value={value}>
+      <audio
+        ref={playlistAudioRef}
+        preload="auto"
+        crossOrigin="anonymous"
+        onEnded={(event) => {
+          const playback = playlistPlaybackRef.current;
+
+          if (!playback) {
+            return;
+          }
+
+          playlistPlaybackRef.current = null;
+          updatePlaylistStatus("ended", {
+            currentSrc: event.currentTarget.currentSrc,
+            currentTime: event.currentTarget.duration,
+            paused: true,
+            room: playback.room,
+          });
+          playlistEndedHandlerRef.current?.();
+        }}
+        onError={(event) => {
+          const playback = playlistPlaybackRef.current;
+
+          updatePlaylistStatus("error", {
+            currentSrc: event.currentTarget.currentSrc,
+            error: getMediaErrorMessage(event.currentTarget),
+            networkState: event.currentTarget.networkState,
+            paused: event.currentTarget.paused,
+            readyState: event.currentTarget.readyState,
+            room: playback?.room ?? activePlaylistRoomRef.current ?? "",
+          });
+        }}
+      />
+      {children}
+    </EntryContext.Provider>
   );
 }
 
