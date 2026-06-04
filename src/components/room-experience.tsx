@@ -698,9 +698,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (resolvedSceneViewport === "mobile") {
         return {
           aspectRatio,
-          height: `max(100dvh, calc(100vw / ${sourceRatio}))`,
+          height: `min(100dvh, calc(100vw / ${sourceRatio}))`,
           maxWidth: "none",
-          width: `max(100vw, calc(100dvh * ${sourceRatio}))`,
+          width: `min(100vw, calc(100dvh * ${sourceRatio}))`,
         };
       }
 
@@ -2233,8 +2233,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       ) : null}
       <section
         className={classNames(
-          "flex h-dvh touch-none items-center justify-center overflow-hidden",
+          "flex h-dvh touch-none justify-center overflow-hidden",
           resolvedSceneViewport === "mobile" ? "p-0" : "p-3 sm:p-5",
+          "items-center",
           devOutline(devBorders, 1),
         )}
       >
