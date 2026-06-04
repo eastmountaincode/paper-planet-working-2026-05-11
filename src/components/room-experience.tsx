@@ -692,13 +692,29 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     [activeVideoSource.height, activeVideoSource.width],
   );
   const stageFrameStyle = useMemo(
-    () => ({
+    () => {
+      const sourceRatio = activeVideoSource.width / activeVideoSource.height;
+
+      if (resolvedSceneViewport === "mobile") {
+        return {
+          aspectRatio,
+          height: `max(100dvh, calc(100vw / ${sourceRatio}))`,
+          maxWidth: "none",
+          width: `max(100vw, calc(100dvh * ${sourceRatio}))`,
+        };
+      }
+
+      return {
+        aspectRatio,
+        maxWidth: `min(100%, calc((100dvh - 2.5rem) * ${sourceRatio}))`,
+      };
+    },
+    [
+      activeVideoSource.height,
+      activeVideoSource.width,
       aspectRatio,
-      maxWidth: `min(100%, calc((100dvh - 2.5rem) * ${
-        activeVideoSource.width / activeVideoSource.height
-      }))`,
-    }),
-    [activeVideoSource.height, activeVideoSource.width, aspectRatio],
+      resolvedSceneViewport,
+    ],
   );
 
   const syncedPlayback = scene.video.sync?.enabled ?? false;
@@ -2217,7 +2233,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       ) : null}
       <section
         className={classNames(
-          "flex h-dvh touch-none items-center justify-center overflow-hidden p-3 sm:p-5",
+          "flex h-dvh touch-none items-center justify-center overflow-hidden",
+          resolvedSceneViewport === "mobile" ? "p-0" : "p-3 sm:p-5",
           devOutline(devBorders, 1),
         )}
       >
