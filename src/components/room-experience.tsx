@@ -192,6 +192,8 @@ const WHEEL_ZOOM_SPEED = 0.006;
 const WHEEL_LINE_PIXELS = 16;
 const PLAYLIST_METADATA_TOAST_MS = 6200;
 const LOADING_PREVIEW_MS = 3200;
+const ROOM_AUDIO_PERIODIC_SYNC_THRESHOLD_SECONDS = 6;
+const ROOM_AUDIO_IMMEDIATE_SYNC_THRESHOLD_SECONDS = 0.5;
 const LOADING_GIF_SRC = "/loading/paper-planet-loading.gif";
 const helperUnlockStorageKey = "paper-planet-helper-unlocked";
 const helperUnlockParam = "pp_debug";
@@ -658,6 +660,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const metadataToastTimeoutRef = useRef<number | null>(null);
   const loadingPreviewTimeoutRef = useRef<number | null>(null);
   const lastMetadataToastKeyRef = useRef<string | null>(null);
+  const playlistAudioActiveRef = useRef(false);
+  const playlistStatusRef = useRef(playlistStatus);
   const [isExiting, setIsExiting] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
@@ -737,6 +741,14 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     playlistEnabled &&
     !playlistAudioMuted &&
     !audioTransitionMuted;
+
+  useEffect(() => {
+    playlistAudioActiveRef.current = playlistAudioActive;
+  }, [playlistAudioActive]);
+
+  useEffect(() => {
+    playlistStatusRef.current = playlistStatus;
+  }, [playlistStatus]);
 
   useEffect(() => {
     if (helperUnlockedByDefault) {
@@ -873,7 +885,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   );
 
   const syncRoomAudioElementTime = useCallback(
-    (audio: HTMLAudioElement) => {
+    (
+      audio: HTMLAudioElement,
+      thresholdSeconds = ROOM_AUDIO_PERIODIC_SYNC_THRESHOLD_SECONDS,
+    ) => {
       if (audio.readyState < HTMLMediaElement.HAVE_METADATA) {
         return;
       }
@@ -894,7 +909,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           ? Math.min(targetTime % duration, Math.max(duration - 0.05, 0))
           : targetTime;
 
-      if (Math.abs(audio.currentTime - safeTime) > 1.5) {
+      if (Math.abs(audio.currentTime - safeTime) > thresholdSeconds) {
         audio.currentTime = safeTime;
       }
     },
@@ -1197,7 +1212,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       audio.volume = videoVolume;
       audio.muted = muted;
       setVideoAudioLevel(videoVolume, muted);
-      syncRoomAudioElementTime(audio);
+      syncRoomAudioElementTime(
+        audio,
+        ROOM_AUDIO_IMMEDIATE_SYNC_THRESHOLD_SECONDS,
+      );
 
       void audio.play().catch((error: unknown) => {
         if (isExpectedMediaInterruption(error)) {
@@ -1394,7 +1412,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     audio.volume = videoVolume;
     audio.muted = !videoAudioActive;
     setVideoAudioLevel(videoVolume, !videoAudioActive);
-    syncRoomAudioElementTime(audio);
+    syncRoomAudioElementTime(
+      audio,
+      ROOM_AUDIO_IMMEDIATE_SYNC_THRESHOLD_SECONDS,
+    );
 
     if (hasEntered && videoAudioEnabled && roomAudioSource) {
       void audio.play().catch((error: unknown) => {
@@ -1482,6 +1503,16 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       const position = getSyncedPlaylistPosition();
 
       if (!position) {
+        return;
+      }
+
+      const status = playlistStatusRef.current;
+      const activePlaybackIsHealthy =
+        playlistAudioActiveRef.current &&
+        !status.paused &&
+        status.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+      if (activePlaybackIsHealthy) {
         return;
       }
 
@@ -1641,7 +1672,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       if (audio) {
         audio.volume = videoVolume;
         audio.muted = false;
-        syncRoomAudioElementTime(audio);
+        syncRoomAudioElementTime(
+          audio,
+          ROOM_AUDIO_IMMEDIATE_SYNC_THRESHOLD_SECONDS,
+        );
         playPromises.push(audio.play());
       }
     }
@@ -2227,7 +2261,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           muted={!videoAudioActive}
           onLoadedMetadata={(event) => {
             event.currentTarget.volume = videoVolume;
-            syncRoomAudioElementTime(event.currentTarget);
+            syncRoomAudioElementTime(
+              event.currentTarget,
+              ROOM_AUDIO_IMMEDIATE_SYNC_THRESHOLD_SECONDS,
+            );
           }}
         />
       ) : null}
