@@ -11,6 +11,14 @@
   font-weight: 400;
 }
 
+@font-face {
+  font-family: "Pyxis";
+  src: url("/fonts/pyxis-regular.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -51,6 +59,10 @@ a {
 
 .font-paper-planet {
   font-family: "Paper Planet Hand", ui-sans-serif, system-ui, sans-serif;
+}
+
+.font-pyxis {
+  font-family: "Pyxis", "Paper Planet Hand", ui-sans-serif, system-ui, sans-serif;
 }
 
 @keyframes paper-planet-letter-wave {

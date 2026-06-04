@@ -24,6 +24,9 @@ export type HotspotAction =
       type: "mailto";
       email: string;
       subject?: string;
+    }
+  | {
+      type: "credits";
     };
 type HotspotBase = {
   id: string;

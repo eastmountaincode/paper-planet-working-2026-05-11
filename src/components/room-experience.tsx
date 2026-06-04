@@ -650,6 +650,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [playlistStartTime, setPlaylistStartTime] = useState(0);
   const [metadataToast, setMetadataToast] =
     useState<PlaylistMetadataToast | null>(null);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const [loadingPreviewVisible, setLoadingPreviewVisible] = useState(false);
   const fadeOutInProgressRef = useRef(false);
   const navigationIdRef = useRef(0);
@@ -891,6 +892,24 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   useEffect(() => {
     sceneSlugRef.current = scene.slug;
   }, [scene.slug]);
+
+  useEffect(() => {
+    if (!creditsOpen) {
+      return undefined;
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCreditsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [creditsOpen]);
 
   useEffect(() => {
     visibleSceneViewportRef.current = visibleSceneViewport;
@@ -1729,6 +1748,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       stageGestureRef.current.startTransform = DEFAULT_STAGE_TRANSFORM;
       lastVideoTimeRef.current = 0;
       setStageTransform(DEFAULT_STAGE_TRANSFORM);
+      setCreditsOpen(false);
       setActiveScene(targetScene);
       setPlaylistTrackIndex(position.trackIndex);
       setPlaylistStartTime(position.currentTime);
@@ -1819,6 +1839,31 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     }
   }
 
+  function handleHotspotActionClick(
+    event: MouseEvent<HTMLAnchorElement>,
+    action: Hotspot["action"],
+  ) {
+    if (action.type === "navigate") {
+      handleSceneNavigation(event, action.target);
+      return;
+    }
+
+    if (
+      action.type !== "credits" ||
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    setCreditsOpen(true);
+  }
+
   useEffect(() => {
     window.history.replaceState(
       { paperPlanetRoom: scene.slug },
@@ -1851,6 +1896,10 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   function getActionHref(action: Hotspot["action"]) {
     if (action.type === "navigate") {
       return ROOT_HREF;
+    }
+
+    if (action.type === "credits") {
+      return "#credits";
     }
 
     const subject = action.subject
@@ -2258,12 +2307,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                   <a
                     key={hotspot.id}
                     href={getActionHref(action)}
-                    onClick={
-                      action.type === "navigate"
-                        ? (event) =>
-                            handleSceneNavigation(event, action.target)
-                        : undefined
-                    }
+                    onClick={(event) => handleHotspotActionClick(event, action)}
                     aria-label={hotspot.label}
                     className="pointer-events-auto outline-none"
                   >
@@ -2317,12 +2361,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                 <a
                   key={overlay.id}
                   href={getActionHref(action)}
-                  onClick={
-                    action.type === "navigate"
-                      ? (event) =>
-                          handleSceneNavigation(event, action.target)
-                      : undefined
-                  }
+                  onClick={(event) => handleHotspotActionClick(event, action)}
                   aria-label={overlay.label}
                   title={debugHotspots ? overlay.label : undefined}
                   className={classNames(
@@ -2431,6 +2470,52 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                 album: {metadataToast.album}
               </p>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {creditsOpen ? (
+        <div
+          className="fixed inset-0 z-[48] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => setCreditsOpen(false)}
+        >
+          <div
+            className="font-paper-planet relative w-full max-w-[min(34rem,calc(100vw-2rem))] border border-white/55 bg-black/90 px-6 py-5 text-center text-white shadow-2xl sm:px-8 sm:py-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="paper-planet-credits-title"
+            data-stage-interactive="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute right-3 top-2 cursor-pointer text-3xl leading-none text-white/65 hover:text-white"
+              aria-label="Close credits"
+              onClick={() => setCreditsOpen(false)}
+            >
+              &times;
+            </button>
+            <h2
+              id="paper-planet-credits-title"
+              className="text-[2.1rem] leading-none text-white sm:text-[2.6rem]"
+            >
+              Credits
+            </h2>
+            <div className="mt-5 grid gap-3 text-[1.45rem] leading-[0.92] text-white/82 sm:text-[1.85rem]">
+              <p>Drawings by Connor Schultze</p>
+              <p>
+                Web development by{" "}
+                <a
+                  href="https://andrew-boylan.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-pyxis text-white underline decoration-white/45 underline-offset-4 hover:decoration-white"
+                >
+                  Regular Expression
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       ) : null}

@@ -122,6 +122,10 @@ function getHotspotActionLabel(hotspot: Hotspot) {
     return `goes to ${scenes[hotspot.action.target].title}`;
   }
 
+  if (hotspot.action.type === "credits") {
+    return "opens credits";
+  }
+
   return `emails ${hotspot.action.email}`;
 }
 
@@ -575,6 +579,13 @@ function HotspotEditorSidebar({
 	                      return;
 	                    }
 
+	                    if (event.target.value === "credits") {
+	                      onUpdateSelectedAction({
+	                        type: "credits",
+	                      });
+	                      return;
+	                    }
+
 	                    onUpdateSelectedAction({
 	                      type: "navigate",
 	                      target: target === "construction" ? "hq" : "construction",
@@ -584,6 +595,7 @@ function HotspotEditorSidebar({
 	                >
 	                  <option value="navigate">Navigate to scene</option>
 	                  <option value="mailto">Open email prompt</option>
+	                  <option value="credits">Open credits modal</option>
 	                </select>
 	              </label>
 
@@ -607,7 +619,7 @@ function HotspotEditorSidebar({
 	                    ))}
 	                  </select>
 	                </label>
-	              ) : (
+	              ) : selectedHotspot.action.type === "mailto" ? (
 	                <>
 	                  <label className="grid gap-1 text-sm">
 	                    Email
@@ -644,6 +656,10 @@ function HotspotEditorSidebar({
 	                    />
 	                  </label>
 	                </>
+	              ) : (
+	                <p className="text-sm text-white/55">
+	                  This hotspot opens the public credits panel.
+	                </p>
 	              )}
 	            </>
 	          )}

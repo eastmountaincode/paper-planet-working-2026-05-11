@@ -61,6 +61,10 @@ function isHotspotAction(value: unknown) {
     return typeof value.email === "string" && value.email.length > 0;
   }
 
+  if (value.type === "credits") {
+    return true;
+  }
+
   return false;
 }
 
@@ -163,4 +167,3 @@ export function normalizeHotspotManifest(value: unknown): HotspotManifest {
 export function hotspotManifestToSceneHotspots(manifest: HotspotManifest) {
   return manifest.scenes;
 }
-
