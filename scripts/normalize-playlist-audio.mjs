@@ -58,6 +58,8 @@ function normalizeTrack(track) {
     "error",
     "-i",
     source,
+    "-map_metadata",
+    "0",
     "-map",
     "0:a:0",
     "-vn",

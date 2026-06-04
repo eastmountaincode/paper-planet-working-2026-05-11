@@ -10,13 +10,13 @@ const playlistDefinitions = {
   construction: {
     name: "HOME - Construction Zone",
     folder:
-      "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
+      "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go",
     keyPrefix: "audio/normalized/construction",
     playbackMode: "ordered",
   },
   hq: {
     name: "HQ",
-    folder: "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
+    folder: "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata",
     keyPrefix: "audio/normalized/hq",
     playbackMode: "deterministic-random",
     shuffleSeed: "paper-planet-hq-v1",
@@ -179,24 +179,14 @@ function getTrackKey(definition, folder, file, usedKeys) {
   return makeUniqueKey(`${definition.keyPrefix}/${key}`, usedKeys);
 }
 
-function getAlbum(folder, file) {
-  const relativeParts = toPosixPath(relative(folder, file)).split("/");
-
-  if (relativeParts.length <= 1) {
-    return undefined;
-  }
-
-  return relativeParts.slice(0, -1).join(" / ");
-}
-
-function getArtist(file) {
+function getTag(file, tag) {
   const result = spawnSync(
     "ffprobe",
     [
       "-v",
       "error",
       "-show_entries",
-      "format_tags=artist",
+      `format_tags=${tag}`,
       "-of",
       "default=noprint_wrappers=1:nokey=1",
       file,
@@ -211,9 +201,9 @@ function getArtist(file) {
     return undefined;
   }
 
-  const artist = result.stdout.trim();
+  const value = result.stdout.trim();
 
-  return artist || undefined;
+  return value || undefined;
 }
 
 const manifest = {};
@@ -225,12 +215,14 @@ for (const [slug, definition] of Object.entries(playlistDefinitions)) {
   let tracks = files.map((file) => {
     const sourceFile = toPosixPath(relative(projectRoot, file));
     const key = getTrackKey(definition, folder, file, usedKeys);
-    const artist = getArtist(file);
+    const title = getTag(file, "title");
+    const artist = getTag(file, "artist");
+    const album = getTag(file, "album");
 
     return {
-      title: stripTrackNumber(file.split(sep).at(-1) ?? ""),
+      title: title ?? stripTrackNumber(file.split(sep).at(-1) ?? ""),
       ...(artist ? { artist } : {}),
-      album: getAlbum(folder, file),
+      ...(album ? { album } : {}),
       sourceFile,
       key,
       src: key,

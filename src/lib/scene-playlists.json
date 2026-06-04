@@ -1,238 +1,319 @@
 {
   "construction": {
     "name": "HOME - Construction Zone",
-    "folder": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)",
+    "folder": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go",
     "playbackMode": "ordered",
-    "totalDurationSeconds": 5061.537,
+    "totalDurationSeconds": 6196.924,
     "tracks": [
       {
         "title": "The Merchant of Graff",
-        "album": "Alpaulccino",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/01 The Merchant of Graff.mp3",
-        "key": "audio/normalized/construction/alpaulccino/01-the-merchant-of-graff.mp3",
-        "src": "audio/normalized/construction/alpaulccino/01-the-merchant-of-graff.mp3",
+        "artist": "Alpaulccino",
+        "album": "Alpaulccino EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Alpaulccino EP1/01 The Merchant of Graff.mp3",
+        "key": "audio/normalized/construction/alpaulccino-ep1/01-the-merchant-of-graff.mp3",
+        "src": "audio/normalized/construction/alpaulccino-ep1/01-the-merchant-of-graff.mp3",
         "durationSeconds": 182.361
       },
       {
         "title": "Two For The Money",
-        "album": "Alpaulccino",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/02 Two For The Money.mp3",
-        "key": "audio/normalized/construction/alpaulccino/02-two-for-the-money.mp3",
-        "src": "audio/normalized/construction/alpaulccino/02-two-for-the-money.mp3",
+        "artist": "Alpaulccino",
+        "album": "Alpaulccino EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Alpaulccino EP1/02 Two For The Money.mp3",
+        "key": "audio/normalized/construction/alpaulccino-ep1/02-two-for-the-money.mp3",
+        "src": "audio/normalized/construction/alpaulccino-ep1/02-two-for-the-money.mp3",
         "durationSeconds": 201.691
       },
       {
         "title": "Manglehord",
-        "album": "Alpaulccino",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/03 Manglehord.mp3",
-        "key": "audio/normalized/construction/alpaulccino/03-manglehord.mp3",
-        "src": "audio/normalized/construction/alpaulccino/03-manglehord.mp3",
+        "artist": "Alpaulccino",
+        "album": "Alpaulccino EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Alpaulccino EP1/03 Manglehord.mp3",
+        "key": "audio/normalized/construction/alpaulccino-ep1/03-manglehord.mp3",
+        "src": "audio/normalized/construction/alpaulccino-ep1/03-manglehord.mp3",
         "durationSeconds": 253.91
       },
       {
         "title": "Scent of a Bloomman",
-        "album": "Alpaulccino",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/04 Scent of a Bloomman.mp3",
-        "key": "audio/normalized/construction/alpaulccino/04-scent-of-a-bloomman.mp3",
-        "src": "audio/normalized/construction/alpaulccino/04-scent-of-a-bloomman.mp3",
+        "artist": "Alpaulccino",
+        "album": "Alpaulccino EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Alpaulccino EP1/04 Scent of a Bloomman.mp3",
+        "key": "audio/normalized/construction/alpaulccino-ep1/04-scent-of-a-bloomman.mp3",
+        "src": "audio/normalized/construction/alpaulccino-ep1/04-scent-of-a-bloomman.mp3",
         "durationSeconds": 202.083
       },
       {
-        "title": "Conito_s Way",
-        "album": "Alpaulccino",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Alpaulccino/05 Conito_s Way.mp3",
-        "key": "audio/normalized/construction/alpaulccino/05-conito-s-way.mp3",
-        "src": "audio/normalized/construction/alpaulccino/05-conito-s-way.mp3",
+        "title": "Conito's Way",
+        "artist": "Alpaulccino",
+        "album": "Alpaulccino EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Alpaulccino EP1/05 Conito_s Way.mp3",
+        "key": "audio/normalized/construction/alpaulccino-ep1/05-conito-s-way.mp3",
+        "src": "audio/normalized/construction/alpaulccino-ep1/05-conito-s-way.mp3",
         "durationSeconds": 251.559
       },
       {
+        "title": "fear II o lord II let it go now",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/01 fear II o lord II let it go now.mp3",
+        "key": "audio/normalized/construction/ep1/01-fear-ii-o-lord-ii-let-it-go-now.mp3",
+        "src": "audio/normalized/construction/ep1/01-fear-ii-o-lord-ii-let-it-go-now.mp3",
+        "durationSeconds": 328.333
+      },
+      {
+        "title": "angry girl",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/angry girl.mp3",
+        "key": "audio/normalized/construction/ep1/angry-girl.mp3",
+        "src": "audio/normalized/construction/ep1/angry-girl.mp3",
+        "durationSeconds": 215.38
+      },
+      {
+        "title": "don_t hang up the phone",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/don_t hang up the phone.mp3",
+        "key": "audio/normalized/construction/ep1/don-t-hang-up-the-phone.mp3",
+        "src": "audio/normalized/construction/ep1/don-t-hang-up-the-phone.mp3",
+        "durationSeconds": 143.334
+      },
+      {
+        "title": "idea 3",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/idea 3.mp3",
+        "key": "audio/normalized/construction/ep1/idea-3.mp3",
+        "src": "audio/normalized/construction/ep1/idea-3.mp3",
+        "durationSeconds": 213.473
+      },
+      {
+        "title": "idea 5",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/idea 5.mp3",
+        "key": "audio/normalized/construction/ep1/idea-5.mp3",
+        "src": "audio/normalized/construction/ep1/idea-5.mp3",
+        "durationSeconds": 139.99
+      },
+      {
+        "title": "survive in part",
+        "artist": "Dollar Store Memorial Club",
+        "album": "EP1",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/EP1/survive in part.mp3",
+        "key": "audio/normalized/construction/ep1/survive-in-part.mp3",
+        "src": "audio/normalized/construction/ep1/survive-in-part.mp3",
+        "durationSeconds": 94.877
+      },
+      {
         "title": "evelina .5uw",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/01 evelina .5uw.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/01 evelina .5uw.mp3",
         "key": "audio/normalized/construction/leslie-12-to/01-evelina-5uw.mp3",
         "src": "audio/normalized/construction/leslie-12-to/01-evelina-5uw.mp3",
         "durationSeconds": 177.215
       },
       {
         "title": "kingsly o.b",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/02 kingsly o.b.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/02 kingsly o.b.mp3",
         "key": "audio/normalized/construction/leslie-12-to/02-kingsly-o-b.mp3",
         "src": "audio/normalized/construction/leslie-12-to/02-kingsly-o-b.mp3",
         "durationSeconds": 205.244
       },
       {
         "title": "ormside .w11",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/03 ormside .w11.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/03 ormside .w11.mp3",
         "key": "audio/normalized/construction/leslie-12-to/03-ormside-w11.mp3",
         "src": "audio/normalized/construction/leslie-12-to/03-ormside-w11.mp3",
         "durationSeconds": 129.567
       },
       {
         "title": "terry perry",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/04 terry perry.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/04 terry perry.mp3",
         "key": "audio/normalized/construction/leslie-12-to/04-terry-perry.mp3",
         "src": "audio/normalized/construction/leslie-12-to/04-terry-perry.mp3",
         "durationSeconds": 140.356
       },
       {
         "title": "green coats",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/05 green coats.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/05 green coats.mp3",
         "key": "audio/normalized/construction/leslie-12-to/05-green-coats.mp3",
         "src": "audio/normalized/construction/leslie-12-to/05-green-coats.mp3",
         "durationSeconds": 81.972
       },
       {
         "title": "brick lane l1i",
+        "artist": "Connor Klaus",
         "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/06 brick lane l1i.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/06 brick lane l1i.mp3",
         "key": "audio/normalized/construction/leslie-12-to/06-brick-lane-l1i.mp3",
         "src": "audio/normalized/construction/leslie-12-to/06-brick-lane-l1i.mp3",
         "durationSeconds": 121.704
       },
       {
         "title": "harlow .sds",
-        "album": "leslie 12.to",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/leslie 12.to/07 harlow .sds.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/leslie 12.to/07 harlow .sds.mp3",
         "key": "audio/normalized/construction/leslie-12-to/07-harlow-sds.mp3",
         "src": "audio/normalized/construction/leslie-12-to/07-harlow-sds.mp3",
         "durationSeconds": 159.216
       },
       {
         "title": "Surface Light",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/01 Surface Light.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/01 Surface Light.mp3",
         "key": "audio/normalized/construction/sun-through-stone/01-surface-light.mp3",
         "src": "audio/normalized/construction/sun-through-stone/01-surface-light.mp3",
         "durationSeconds": 239.386
       },
       {
         "title": "Pomegranate",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/02 Pomegranate.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/02 Pomegranate.mp3",
         "key": "audio/normalized/construction/sun-through-stone/02-pomegranate.mp3",
         "src": "audio/normalized/construction/sun-through-stone/02-pomegranate.mp3",
         "durationSeconds": 236.774
       },
       {
         "title": "Ash Taste",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/03 Ash Taste.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/03 Ash Taste.mp3",
         "key": "audio/normalized/construction/sun-through-stone/03-ash-taste.mp3",
         "src": "audio/normalized/construction/sun-through-stone/03-ash-taste.mp3",
         "durationSeconds": 121.548
       },
       {
         "title": "Rocking Foot Floor Creek",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/04 Rocking Foot Floor Creek.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/04 Rocking Foot Floor Creek.mp3",
         "key": "audio/normalized/construction/sun-through-stone/04-rocking-foot-floor-creek.mp3",
         "src": "audio/normalized/construction/sun-through-stone/04-rocking-foot-floor-creek.mp3",
         "durationSeconds": 126.38
       },
       {
         "title": "Dawn Still",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/05 Dawn Still.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/05 Dawn Still.mp3",
         "key": "audio/normalized/construction/sun-through-stone/05-dawn-still.mp3",
         "src": "audio/normalized/construction/sun-through-stone/05-dawn-still.mp3",
         "durationSeconds": 148.846
       },
       {
         "title": "Wind Through Window",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/06 Wind Through Window.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/06 Wind Through Window.mp3",
         "key": "audio/normalized/construction/sun-through-stone/06-wind-through-window.mp3",
         "src": "audio/normalized/construction/sun-through-stone/06-wind-through-window.mp3",
         "durationSeconds": 131.683
       },
       {
         "title": "Scattered Blue",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/07 Scattered Blue.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/07 Scattered Blue.mp3",
         "key": "audio/normalized/construction/sun-through-stone/07-scattered-blue.mp3",
         "src": "audio/normalized/construction/sun-through-stone/07-scattered-blue.mp3",
         "durationSeconds": 136.255
       },
       {
         "title": "Sock",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/08 Sock.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/08 Sock.mp3",
         "key": "audio/normalized/construction/sun-through-stone/08-sock.mp3",
         "src": "audio/normalized/construction/sun-through-stone/08-sock.mp3",
         "durationSeconds": 160.705
       },
       {
         "title": "Sun Through Stone",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/09 Sun Through Stone.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/09 Sun Through Stone.mp3",
         "key": "audio/normalized/construction/sun-through-stone/09-sun-through-stone.mp3",
         "src": "audio/normalized/construction/sun-through-stone/09-sun-through-stone.mp3",
         "durationSeconds": 224.784
       },
       {
         "title": "Note With Crow",
+        "artist": "Connor Klaus || Tyler Monsein",
         "album": "Sun Through Stone",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/Sun Through Stone/10 Note With Crow.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/Sun Through Stone/10 Note With Crow.mp3",
         "key": "audio/normalized/construction/sun-through-stone/10-note-with-crow.mp3",
         "src": "audio/normalized/construction/sun-through-stone/10-note-with-crow.mp3",
         "durationSeconds": 318.328
       },
       {
         "title": "silly questions",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/01 silly questions.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/01 silly questions.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/01-silly-questions.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/01-silly-questions.mp3",
         "durationSeconds": 187.533
       },
       {
         "title": "if it bends",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/02 if it bends.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/02 if it bends.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/02-if-it-bends.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/02-if-it-bends.mp3",
         "durationSeconds": 157.806
       },
       {
         "title": "shadows in the summer",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/03 shadows in the summer.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/03 shadows in the summer.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/03-shadows-in-the-summer.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/03-shadows-in-the-summer.mp3",
         "durationSeconds": 108.513
       },
       {
         "title": "last to leave",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/04 last to leave.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/04 last to leave.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/04-last-to-leave.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/04-last-to-leave.mp3",
         "durationSeconds": 147.984
       },
       {
         "title": "family business",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/05 family business.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/05 family business.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/05-family-business.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/05-family-business.mp3",
         "durationSeconds": 136.934
       },
       {
         "title": "mental wings",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/06 mental wings.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/06 mental wings.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/06-mental-wings.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/06-mental-wings.mp3",
         "durationSeconds": 113.136
       },
       {
         "title": "chances are you will",
+        "artist": "jimmy lesser",
         "album": "that was yesterday",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HOME - (Construction Zone)/that was yesterday/07 chances are you will.mp3",
+        "sourceFile": "assets/audio/rooms/construction_zone/HOME - (ConstructionZone) good to go/that was yesterday/07 chances are you will.mp3",
         "key": "audio/normalized/construction/that-was-yesterday/07-chances-are-you-will.mp3",
         "src": "audio/normalized/construction/that-was-yesterday/07-chances-are-you-will.mp3",
         "durationSeconds": 258.064
@@ -241,80 +322,73 @@
   },
   "hq": {
     "name": "HQ",
-    "folder": "assets/Phase 1 - Construction Zone/Music Playlists/HQ",
+    "folder": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata",
     "playbackMode": "deterministic-random",
     "shuffleSeed": "paper-planet-hq-v1",
-    "totalDurationSeconds": 791.041,
+    "totalDurationSeconds": 569.052,
     "tracks": [
       {
-        "title": "SFX 5",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX 5.mp3",
-        "key": "audio/normalized/hq/sfx-5.mp3",
-        "src": "audio/normalized/hq/sfx-5.mp3",
-        "durationSeconds": 39.654
-      },
-      {
-        "title": "SFX2",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX2.mp3",
-        "key": "audio/normalized/hq/sfx2.mp3",
-        "src": "audio/normalized/hq/sfx2.mp3",
-        "durationSeconds": 25.104
-      },
-      {
         "title": "SFX3",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX3.mp3",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SFX3.mp3",
         "key": "audio/normalized/hq/sfx3.mp3",
         "src": "audio/normalized/hq/sfx3.mp3",
         "durationSeconds": 90.41
       },
       {
+        "title": "SFX2",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SFX2.mp3",
+        "key": "audio/normalized/hq/sfx2.mp3",
+        "src": "audio/normalized/hq/sfx2.mp3",
+        "durationSeconds": 25.104
+      },
+      {
         "title": "SFX1",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX1.mp3",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SFX1.mp3",
         "key": "audio/normalized/hq/sfx1.mp3",
         "src": "audio/normalized/hq/sfx1.mp3",
         "durationSeconds": 44.408
       },
       {
         "title": "TEETHTOWN",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/TEETHTOWN.mp3",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/TEETHTOWN.mp3",
         "key": "audio/normalized/hq/teethtown.mp3",
         "src": "audio/normalized/hq/teethtown.mp3",
         "durationSeconds": 27.376
       },
       {
         "title": "CIRCUSWOLF",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/CIRCUSWOLF.mp3",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/CIRCUSWOLF.mp3",
         "key": "audio/normalized/hq/circuswolf.mp3",
         "src": "audio/normalized/hq/circuswolf.mp3",
         "durationSeconds": 33.855
       },
       {
-        "title": "SFX 4",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SFX 4.mp3",
-        "key": "audio/normalized/hq/sfx-4.mp3",
-        "src": "audio/normalized/hq/sfx-4.mp3",
-        "durationSeconds": 72.359
+        "title": "SFX 5",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SFX 5.mp3",
+        "key": "audio/normalized/hq/sfx-5.mp3",
+        "src": "audio/normalized/hq/sfx-5.mp3",
+        "durationSeconds": 39.654
       },
       {
-        "title": "HIT 1",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/HIT 1.mp3",
-        "key": "audio/normalized/hq/hit-1.mp3",
-        "src": "audio/normalized/hq/hit-1.mp3",
-        "durationSeconds": 221.989
+        "title": "NEENON",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/NEENON.mp3",
+        "key": "audio/normalized/hq/neenon.mp3",
+        "src": "audio/normalized/hq/neenon.mp3",
+        "durationSeconds": 39.654
       },
       {
         "title": "SPEAKERPHONE THUG",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/SPEAKERPHONE THUG.mp3",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SPEAKERPHONE THUG.mp3",
         "key": "audio/normalized/hq/speakerphone-thug.mp3",
         "src": "audio/normalized/hq/speakerphone-thug.mp3",
         "durationSeconds": 196.232
       },
       {
-        "title": "NEENON",
-        "sourceFile": "assets/Phase 1 - Construction Zone/Music Playlists/HQ/NEENON.mp3",
-        "key": "audio/normalized/hq/neenon.mp3",
-        "src": "audio/normalized/hq/neenon.mp3",
-        "durationSeconds": 39.654
+        "title": "SFX 4",
+        "sourceFile": "assets/audio/rooms/hq/HQ - Songs can stay anonymous no metadata/SFX 4.mp3",
+        "key": "audio/normalized/hq/sfx-4.mp3",
+        "src": "audio/normalized/hq/sfx-4.mp3",
+        "durationSeconds": 72.359
       }
     ]
   }

@@ -759,7 +759,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   );
   const transitionActive = isExiting || !videoReady;
   const loadingOverlayActive = transitionActive || loadingPreviewVisible;
-  const borderShortcutEnabled = devPanelUnlocked && helperUnlockedByUrl;
+  const helperShortcutEnabled = devPanelUnlocked && helperUnlockedByUrl;
   const stageTransformStyle = useMemo(
     () => ({
       transform: `translate3d(${stageTransform.x}px, ${stageTransform.y}px, 0) scale(${stageTransform.scale})`,
@@ -828,17 +828,29 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
 
   const syncVideoElementTime = useCallback(
     (video: HTMLVideoElement) => {
-      if (syncedPlayback) {
-        video.currentTime = getSyncedTime();
-        return;
-      }
+      let targetTime: number | null = null;
 
-      if (lastVideoTimeRef.current > 0) {
-        video.currentTime = Math.min(
+      if (syncedPlayback) {
+        targetTime = getSyncedTime();
+      } else if (lastVideoTimeRef.current > 0) {
+        targetTime = Math.min(
           lastVideoTimeRef.current,
-          Math.max(video.duration - 0.1, 0),
+          Number.isFinite(video.duration)
+            ? Math.max(video.duration - 0.1, 0)
+            : lastVideoTimeRef.current,
         );
       }
+
+      if (targetTime === null || !Number.isFinite(targetTime)) {
+        return false;
+      }
+
+      if (Math.abs(video.currentTime - targetTime) <= 1.5) {
+        return false;
+      }
+
+      video.currentTime = targetTime;
+      return true;
     },
     [getSyncedTime, syncedPlayback],
   );
@@ -1013,9 +1025,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     const video = videoElementsRef.current[viewport];
 
     if (video) {
-      syncVideoElementTime(video);
+      const didSeek = syncVideoElementTime(video);
       video.volume = 0;
       video.muted = true;
+
+      if (
+        didSeek ||
+        video.seeking ||
+        video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
+        return;
+      }
     }
 
     visibleSceneViewportRef.current = viewport;
@@ -1039,19 +1059,33 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       video.preload = "auto";
       void video.play().catch(() => undefined);
 
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      const didSeek = syncVideoElementTime(video);
+
+      if (
+        !didSeek &&
+        !video.seeking &&
+        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      ) {
         handleVariantVideoReady(viewport);
       }
     };
 
     const animationFrame = window.requestAnimationFrame(checkActiveVideo);
     const timeout = window.setTimeout(checkActiveVideo, 700);
+    const interval = window.setInterval(checkActiveVideo, 700);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
       window.clearTimeout(timeout);
+      window.clearInterval(interval);
     };
-  }, [handleVariantVideoReady, scene.slug, sceneViewport, videoReady]);
+  }, [
+    handleVariantVideoReady,
+    scene.slug,
+    sceneViewport,
+    syncVideoElementTime,
+    videoReady,
+  ]);
 
   useEffect(() => {
     for (const viewport of sceneViewports) {
@@ -1239,7 +1273,11 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         return;
       }
 
-      if (key === "b" && borderShortcutEnabled) {
+      if (!helperShortcutEnabled) {
+        return;
+      }
+
+      if (key === "b") {
         setDevBordersEnabled((current) => !current);
       }
 
@@ -1253,7 +1291,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [borderShortcutEnabled, devPanelUnlocked]);
+  }, [devPanelUnlocked, helperShortcutEnabled]);
 
   useEffect(() => {
     if (!syncedPlayback) {
@@ -2193,6 +2231,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
                       }}
                       onLoadedData={() => handleVariantVideoReady(viewport)}
                       onCanPlay={() => handleVariantVideoReady(viewport)}
+                      onSeeked={() => handleVariantVideoReady(viewport)}
+                      onPlaying={() => handleVariantVideoReady(viewport)}
                     />
                   );
                 })
@@ -2395,7 +2435,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         </div>
       ) : null}
 
-      {devPanelOpen ? (
+      {helperShortcutEnabled && devPanelOpen ? (
         <aside
           className={classNames(
             "fixed right-3 top-3 z-50 max-h-[calc(100dvh-1.5rem)] w-[min(15rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain border border-white/20 bg-black/85 font-mono text-[0.65rem] leading-snug text-white shadow-2xl backdrop-blur",

@@ -12,7 +12,6 @@ import type { FFmpeg } from "@ffmpeg/ffmpeg";
 import {
   createBatchId,
   createTrackId,
-  getFolderAlbum,
   normalizePlaylistManifest,
   roomSlugs,
   roomTitles,
@@ -53,7 +52,9 @@ type NormalizedAudio = {
 };
 
 type UploadedTrackMetadata = {
+  album?: string;
   artist?: string;
+  title?: string;
 };
 
 type DropPlacement = "before" | "after";
@@ -180,6 +181,7 @@ async function extractUploadedTrackMetadata(
   const tagSize = readSynchsafeInteger(header, 6);
   const bytes = new Uint8Array(await file.slice(10, 10 + tagSize).arrayBuffer());
   let offset = 0;
+  const metadata: UploadedTrackMetadata = {};
 
   while (offset + 10 <= bytes.length) {
     const frameId = String.fromCharCode(
@@ -202,16 +204,28 @@ async function extractUploadedTrackMetadata(
       break;
     }
 
-    if (frameId === "TPE1") {
-      return {
-        artist: decodeId3TextFrame(bytes.slice(offset + 10, offset + 10 + frameSize)),
-      };
+    if (frameId === "TIT2" || frameId === "TPE1" || frameId === "TALB") {
+      const value = decodeId3TextFrame(
+        bytes.slice(offset + 10, offset + 10 + frameSize),
+      );
+
+      if (frameId === "TIT2" && value) {
+        metadata.title = value;
+      }
+
+      if (frameId === "TPE1" && value) {
+        metadata.artist = value;
+      }
+
+      if (frameId === "TALB" && value) {
+        metadata.album = value;
+      }
     }
 
     offset += 10 + frameSize;
   }
 
-  return {};
+  return metadata;
 }
 
 function readPlaylistDraft() {
@@ -355,6 +369,8 @@ async function normalizeMp3(
       "error",
       "-i",
       inputName,
+      "-map_metadata",
+      "0",
       "-map",
       "0:a:0",
       "-vn",
@@ -1120,11 +1136,9 @@ export function AudioAdmin() {
 
         uploadedTracks.push({
           id: createTrackId(),
-          title: stripTrackNumber(file.name),
+          title: uploadedMetadata.title ?? stripTrackNumber(file.name),
           ...(uploadedMetadata.artist ? { artist: uploadedMetadata.artist } : {}),
-          ...(getFolderAlbum(relativePath)
-            ? { album: getFolderAlbum(relativePath) }
-            : {}),
+          ...(uploadedMetadata.album ? { album: uploadedMetadata.album } : {}),
           key: upload.key,
           src: upload.key,
           durationSeconds: normalized.durationSeconds,
