@@ -2558,7 +2558,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
               Credits
             </h2>
             <div className="mt-5 grid gap-3 text-[1.45rem] leading-[0.92] text-white/82 sm:text-[1.85rem]">
-              <p>Drawings by Connor Schultze</p>
+              <p>Created by Connor Schultze</p>
               <p>
                 Web development by{" "}
                 <a
