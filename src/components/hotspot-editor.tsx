@@ -35,7 +35,7 @@ const targetLabels: Record<HotspotTarget, string> = {
 const enterHotspots = enterHotspotsData as Hotspot[];
 const enterArtwork = {
   src: "/enter/paper-planet-enter.webp",
-  width: 1173,
+  width: 1009,
   height: 868,
 };
 
