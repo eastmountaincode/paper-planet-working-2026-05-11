@@ -2,7 +2,7 @@ import type { SceneSlug } from "@/lib/scenes";
 
 export const SITE_SETTINGS_MANIFEST_KEY = "manifests/settings.json";
 export const SITE_SETTINGS_MANIFEST_VERSION = 1;
-export const DEFAULT_ROOM_AUDIO_VOLUME = 0.85;
+export const DEFAULT_ROOM_AUDIO_VOLUME = 0.9;
 export const DEFAULT_PLAYLIST_VOLUME = 0.6;
 
 export type RoomAudioSettings = {
