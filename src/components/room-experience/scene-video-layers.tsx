@@ -49,7 +49,6 @@ export function SceneVideoLayers({
               isVisible ? "opacity-100" : "opacity-0",
               devOutline(devBorders, 4),
             )}
-            crossOrigin="anonymous"
             src={videoSource.src}
             autoPlay={isVisible}
             muted={!isVisible || !videoAudioActive || !videoAudioEnabled}
