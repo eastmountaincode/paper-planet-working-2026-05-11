@@ -5,7 +5,7 @@ import {
   type SiteSettingsManifest,
 } from "@/lib/site-settings";
 
-export type SceneSlug = "construction" | "hq";
+export type SceneSlug = "construction" | "hq" | "tv-room" | "hole-room";
 export type SceneViewport = "desktop" | "mobile";
 
 export const sceneViewports: SceneViewport[] = ["desktop", "mobile"];
@@ -149,8 +149,8 @@ export type ScenePlaylistData = {
 };
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
-const roomVideoVersion = "20260527-responsive-videos";
-const roomAudioVersion = "20260527-synced-room-audio";
+const roomVideoVersion = "20260702-room-7-1";
+const roomAudioVersion = "20260702-room-7-1";
 
 const mediaUrl = (path: string) =>
   `${mediaBaseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
@@ -258,8 +258,38 @@ export function createScenes(
       "assets/rooms-20260516/compressed/hq-mobile-1080x1920-crf24.mp4",
     ),
   };
+  const tvRoomVideoSources = {
+    desktop: createSceneVideoSource(
+      "rooms/tv-room-desktop.mp4",
+      1080,
+      1080,
+      "assets/rooms-20260702/compressed/tv-room-desktop-1080-crf24.mp4",
+    ),
+    mobile: createSceneVideoSource(
+      "rooms/tv-room-mobile.mp4",
+      1080,
+      1920,
+      "assets/rooms-20260702/compressed/tv-room-mobile-1080x1920-crf24.mp4",
+    ),
+  };
+  const holeRoomVideoSources = {
+    desktop: createSceneVideoSource(
+      "rooms/hole-room-desktop.mp4",
+      1080,
+      810,
+      "assets/rooms-20260702/compressed/hole-room-desktop-1080x810-crf24.mp4",
+    ),
+    mobile: createSceneVideoSource(
+      "rooms/hole-room-mobile.mp4",
+      1080,
+      1920,
+      "assets/rooms-20260702/compressed/hole-room-mobile-1080x1920-crf24.mp4",
+    ),
+  };
   const constructionHotspots = getSceneHotspotVariants("construction", hotspots);
   const hqHotspots = getSceneHotspotVariants("hq", hotspots);
+  const tvRoomHotspots = getSceneHotspotVariants("tv-room", hotspots);
+  const holeRoomHotspots = getSceneHotspotVariants("hole-room", hotspots);
 
   return {
     construction: {
@@ -295,7 +325,7 @@ export function createScenes(
       ticker: {
         messages: ["Paper Planet", "Under Construction", "Coming Fall 2026"],
         position: "center",
-        cycleSeconds: 66,
+        cycleSeconds: 102,
         messageIntervalSeconds: 24,
       },
     },
@@ -331,6 +361,100 @@ export function createScenes(
       overlays: [
         {
           id: "hq-back-button",
+          label: "Back to Construction Zone",
+          src: "/icons/back_button_2.png",
+          zIndex: 100,
+          position: {
+            x: 3,
+            y: 3,
+            width: 12,
+          },
+          action: {
+            type: "navigate",
+            target: "construction",
+          },
+        },
+      ],
+    },
+    "tv-room": {
+      slug: "tv-room",
+      title: "Paper Planet TV Room",
+      video: {
+        ...tvRoomVideoSources.desktop,
+        sources: tvRoomVideoSources,
+        durationSeconds: 126.792,
+        sync: {
+          enabled: true,
+        },
+        audio: {
+          enabled: true,
+          volume: settings.rooms["tv-room"].roomAudioVolume,
+          src: roomAudioUrl("rooms/tv-room-audio.m4a"),
+          sourceFile: "assets/rooms-20260702/audio/tv-room-audio.m4a",
+        },
+      },
+      playlist: {
+        enabled: true,
+        name: playlists["tv-room"].name,
+        folder: playlists["tv-room"].folder,
+        volume: settings.rooms["tv-room"].playlistVolume,
+        sync: {
+          enabled: true,
+        },
+        tracks: getPlaylistTracks(playlists, "tv-room"),
+      },
+      hotspots: tvRoomHotspots.desktop,
+      hotspotVariants: tvRoomHotspots,
+      overlays: [
+        {
+          id: "tv-room-back-button",
+          label: "Back to Construction Zone",
+          src: "/icons/back_button_2.png",
+          zIndex: 100,
+          position: {
+            x: 3,
+            y: 3,
+            width: 12,
+          },
+          action: {
+            type: "navigate",
+            target: "construction",
+          },
+        },
+      ],
+    },
+    "hole-room": {
+      slug: "hole-room",
+      title: "Paper Planet Hole Room",
+      video: {
+        ...holeRoomVideoSources.desktop,
+        sources: holeRoomVideoSources,
+        durationSeconds: 192.083,
+        sync: {
+          enabled: true,
+        },
+        audio: {
+          enabled: true,
+          volume: settings.rooms["hole-room"].roomAudioVolume,
+          src: roomAudioUrl("rooms/hole-room-audio.m4a"),
+          sourceFile: "assets/rooms-20260702/audio/hole-room-audio.m4a",
+        },
+      },
+      playlist: {
+        enabled: true,
+        name: playlists["hole-room"].name,
+        folder: playlists["hole-room"].folder,
+        volume: settings.rooms["hole-room"].playlistVolume,
+        sync: {
+          enabled: true,
+        },
+        tracks: getPlaylistTracks(playlists, "hole-room"),
+      },
+      hotspots: holeRoomHotspots.desktop,
+      hotspotVariants: holeRoomHotspots,
+      overlays: [
+        {
+          id: "hole-room-back-button",
           label: "Back to Construction Zone",
           src: "/icons/back_button_2.png",
           zIndex: 100,

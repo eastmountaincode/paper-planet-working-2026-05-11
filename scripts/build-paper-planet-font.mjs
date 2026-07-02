@@ -23,6 +23,7 @@ const generatedDir = path.join(sourceDir, "generated");
 const glyphPngDir = path.join(generatedDir, "glyphs");
 const tracePngDir = path.join(generatedDir, "trace-png");
 const glyphSvgDir = path.join(generatedDir, "svg");
+const glyphMetricsPath = path.join(sourceDir, "glyph-metrics.json");
 const fontDir = path.join(appDir, "public", "fonts");
 
 const FONT_FAMILY = "Paper Planet Hand";
@@ -64,6 +65,8 @@ const nameByChar = {
   "$": "dollar",
 };
 
+const glyphMetricAdjustments = readGlyphMetricAdjustments();
+
 const sheets = [
   {
     file: "Font Letters.png",
@@ -94,6 +97,44 @@ function at(xs, chars) {
 
 function getGlyphName(char) {
   return nameByChar[char] ?? char;
+}
+
+function readGlyphMetricAdjustments() {
+  const text = fs.readFileSync(glyphMetricsPath, "utf8");
+  const manifest = JSON.parse(text);
+
+  if (manifest.version !== 1 || !manifest.glyphs || typeof manifest.glyphs !== "object") {
+    throw new Error(`${glyphMetricsPath} must be a version 1 glyph metrics manifest.`);
+  }
+
+  const adjustments = {};
+
+  for (const [glyphName, value] of Object.entries(manifest.glyphs)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`Invalid metric adjustment for glyph "${glyphName}".`);
+    }
+
+    adjustments[glyphName] = {
+      xOffset: getMetricNumber(value.xOffset, 0),
+      yOffset: getMetricNumber(value.yOffset, 0),
+      scale: getMetricNumber(value.scale, 1),
+      advanceOffset: getMetricNumber(value.advanceOffset, 0),
+    };
+  }
+
+  return adjustments;
+}
+
+function getMetricNumber(value, defaultValue) {
+  if (value == null) {
+    return defaultValue;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("Font metric adjustments must be finite numbers.");
+  }
+
+  return value;
 }
 
 function getFileStem(char) {
@@ -593,6 +634,23 @@ function tuneSvgFontMetrics(svgFont) {
 }
 
 function getGlyphMetrics(glyphName) {
+  const baseMetrics = getBaseGlyphMetrics(glyphName);
+  const adjustment = glyphMetricAdjustments[glyphName];
+
+  if (!adjustment) {
+    return baseMetrics;
+  }
+
+  return {
+    left: baseMetrics.left + adjustment.xOffset,
+    right: baseMetrics.right,
+    scale: baseMetrics.scale * adjustment.scale,
+    yOffset: baseMetrics.yOffset + adjustment.yOffset,
+    minAdvance: Math.max(0, baseMetrics.minAdvance + adjustment.advanceOffset),
+  };
+}
+
+function getBaseGlyphMetrics(glyphName) {
   if (glyphName === "apostrophe") {
     return {
       left: 28,

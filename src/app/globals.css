@@ -65,21 +65,21 @@ a {
   font-family: "Pyxis", "Paper Planet Hand", ui-sans-serif, system-ui, sans-serif;
 }
 
-@keyframes paper-planet-letter-wave {
+@keyframes paper-planet-ticker-letter-bounce {
   0%,
   100% {
     transform: translateY(0) rotate(0deg);
   }
 
   50% {
-    transform: translateY(-0.22em) rotate(-0.6deg);
+    transform: translateY(-0.48em) rotate(-0.35deg);
   }
 }
 
-.paper-planet-wave-letter {
-  animation: paper-planet-letter-wave 4s ease-in-out infinite;
+.paper-planet-ticker-letter {
+  animation: paper-planet-ticker-letter-bounce 3.75s ease-in-out infinite;
   backface-visibility: hidden;
-  transform-origin: 50% 60%;
+  transform-origin: 50% 80%;
   will-change: transform;
 }
 

@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
 import {
+  sceneSlugs,
   sceneViewports,
   type Hotspot,
   type SceneSlug,
@@ -19,8 +20,8 @@ const enterHotspotFilePath = path.join(
   process.cwd(),
   "src/lib/enter-hotspots.json",
 );
-const validSceneSlugs = new Set<SceneSlug>(["construction", "hq"]);
-const validTargets = new Set(["construction", "hq", "enter"]);
+const validSceneSlugs = new Set<SceneSlug>(sceneSlugs);
+const validTargets = new Set<HotspotTarget>(["enter", ...sceneSlugs]);
 const validSceneViewports = new Set<SceneViewport>(sceneViewports);
 
 type HotspotTarget = SceneSlug | "enter";

@@ -391,5 +391,19 @@
         "durationSeconds": 72.359
       }
     ]
+  },
+  "tv-room": {
+    "name": "Paper Planet TV Room",
+    "folder": "",
+    "playbackMode": "ordered",
+    "totalDurationSeconds": 0,
+    "tracks": []
+  },
+  "hole-room": {
+    "name": "Paper Planet Hole Room",
+    "folder": "",
+    "playbackMode": "ordered",
+    "totalDurationSeconds": 0,
+    "tracks": []
   }
 }

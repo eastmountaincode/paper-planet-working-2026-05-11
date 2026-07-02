@@ -19,7 +19,12 @@ type SceneHotspotEntry =
   | Partial<Record<SceneViewport, Hotspot[]>>;
 type UnknownRecord = Record<string, unknown>;
 
-export const hotspotSceneSlugs: SceneSlug[] = ["construction", "hq"];
+export const hotspotSceneSlugs: SceneSlug[] = [
+  "construction",
+  "hq",
+  "tv-room",
+  "hole-room",
+];
 export const hotspotSceneViewports: SceneViewport[] = ["desktop", "mobile"];
 
 const staticEnterHotspots = enterHotspotsData as Hotspot[];

@@ -49,14 +49,15 @@ export function SettingsAdmin() {
   const [isSaving, setIsSaving] = useState(false);
 
   const totalMixLabel = useMemo(() => {
-    const construction = manifest.rooms.construction;
-    const hq = manifest.rooms.hq;
+    return settingsRoomSlugs
+      .map((room) => {
+        const roomSettings = manifest.rooms[room];
 
-    return `Construction ${formatPercent(
-      construction.roomAudioVolume,
-    )}/${formatPercent(construction.playlistVolume)} / HQ ${formatPercent(
-      hq.roomAudioVolume,
-    )}/${formatPercent(hq.playlistVolume)}`;
+        return `${settingsRoomTitles[room]} ${formatPercent(
+          roomSettings.roomAudioVolume,
+        )}/${formatPercent(roomSettings.playlistVolume)}`;
+      })
+      .join(" / ");
   }, [manifest]);
 
   useEffect(() => {

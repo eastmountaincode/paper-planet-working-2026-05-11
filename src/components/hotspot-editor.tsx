@@ -21,7 +21,12 @@ import type {
   SceneSlug,
   SceneViewport,
 } from "@/lib/scenes";
-import { getSceneVideoSource, sceneSlugs, sceneViewports, scenes } from "@/lib/scenes";
+import {
+  getSceneVideoSource,
+  sceneSlugs,
+  sceneViewports,
+  scenes,
+} from "@/lib/scenes";
 
 type HotspotTarget = SceneSlug | "enter";
 type HotspotTargetKey = "enter" | `${SceneSlug}:${SceneViewport}`;
@@ -29,9 +34,17 @@ type HotspotTargetKey = "enter" | `${SceneSlug}:${SceneViewport}`;
 const hotspotTargets: HotspotTarget[] = ["enter", ...sceneSlugs];
 const targetLabels: Record<HotspotTarget, string> = {
   enter: "Enter Page",
-  construction: scenes.construction.title,
-  hq: scenes.hq.title,
-};
+  ...Object.fromEntries(sceneSlugs.map((slug) => [slug, scenes[slug].title])),
+} as Record<HotspotTarget, string>;
+
+function getDefaultNavigateTarget(target: HotspotTarget): SceneSlug {
+  if (target === "enter") {
+    return "construction";
+  }
+
+  return sceneSlugs.find((slug) => slug !== target) ?? "construction";
+}
+
 const enterHotspots = enterHotspotsData as Hotspot[];
 const enterArtwork = {
   src: "/enter/paper-planet-enter.webp",
@@ -99,7 +112,7 @@ function createPolygonHotspot(
     points: [],
     action: {
       type: "navigate",
-      target: target === "construction" ? "hq" : "construction",
+      target: getDefaultNavigateTarget(target),
     },
   };
 }
@@ -588,7 +601,7 @@ function HotspotEditorSidebar({
 
 	                    onUpdateSelectedAction({
 	                      type: "navigate",
-	                      target: target === "construction" ? "hq" : "construction",
+	                      target: getDefaultNavigateTarget(target),
 	                    });
 	                  }}
 	                  className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"

@@ -36,6 +36,26 @@ const videoUploads = [
     key: "rooms/hq-mobile.mp4",
     contentType: "video/mp4",
   },
+  {
+    source: "../assets/rooms-20260702/compressed/tv-room-desktop-1080-crf24.mp4",
+    key: "rooms/tv-room-desktop.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260702/compressed/tv-room-mobile-1080x1920-crf24.mp4",
+    key: "rooms/tv-room-mobile.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260702/compressed/hole-room-desktop-1080x810-crf24.mp4",
+    key: "rooms/hole-room-desktop.mp4",
+    contentType: "video/mp4",
+  },
+  {
+    source: "../assets/rooms-20260702/compressed/hole-room-mobile-1080x1920-crf24.mp4",
+    key: "rooms/hole-room-mobile.mp4",
+    contentType: "video/mp4",
+  },
 ];
 
 const roomAudioUploads = [
@@ -47,6 +67,16 @@ const roomAudioUploads = [
   {
     source: "../assets/rooms-20260516/audio/hq-audio.m4a",
     key: "rooms/hq-audio.m4a",
+    contentType: "audio/mp4",
+  },
+  {
+    source: "../assets/rooms-20260702/audio/tv-room-audio.m4a",
+    key: "rooms/tv-room-audio.m4a",
+    contentType: "audio/mp4",
+  },
+  {
+    source: "../assets/rooms-20260702/audio/hole-room-audio.m4a",
+    key: "rooms/hole-room-audio.m4a",
     contentType: "audio/mp4",
   },
 ];

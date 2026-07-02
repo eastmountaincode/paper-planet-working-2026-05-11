@@ -18,11 +18,18 @@ export type SiteSettingsManifest = {
 
 type UnknownRecord = Record<string, unknown>;
 
-export const settingsRoomSlugs: SceneSlug[] = ["construction", "hq"];
+export const settingsRoomSlugs: SceneSlug[] = [
+  "construction",
+  "hq",
+  "tv-room",
+  "hole-room",
+];
 
 export const settingsRoomTitles: Record<SceneSlug, string> = {
   construction: "Construction Zone",
   hq: "Paper Planet HQ",
+  "tv-room": "Paper Planet TV Room",
+  "hole-room": "Paper Planet Hole Room",
 };
 
 function isRecord(value: unknown): value is UnknownRecord {

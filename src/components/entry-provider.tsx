@@ -50,6 +50,7 @@ type EntryContextValue = {
     muted: boolean,
   ) => void;
   setVideoAudioLevel: (volume: number, muted: boolean) => void;
+  stopRoomPlaylistAudio: (room: SceneSlug) => void;
   unlockRoomPlaylists: (options: UnlockRoomPlaylistOptions[]) => Promise<void>;
   videoGain: number;
 };
@@ -70,6 +71,8 @@ type PlaylistPlayback = {
   room: SceneSlug;
   src: string;
 };
+
+const MAX_PRIMED_PLAYLIST_TRACKS = 8;
 
 const EntryContext = createContext<EntryContextValue | null>(null);
 
@@ -141,7 +144,7 @@ function waitForPlaylistMetadata(audio: HTMLAudioElement) {
 
 export function EntryProvider({ children }: { children: ReactNode }) {
   const playlistAudioRef = useRef<HTMLAudioElement | null>(null);
-  const primedPlaylistSourcesRef = useRef(new Set<string>());
+  const primedPlaylistAudioRef = useRef(new Map<string, HTMLAudioElement>());
   const playlistPlaybackRef = useRef<PlaylistPlayback | null>(null);
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
   const playlistRequestIdRef = useRef(0);
@@ -165,8 +168,10 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       const audio = playlistAudioRef.current;
       const playback = playlistPlaybackRef.current;
       const activeRoom = activePlaylistRoomRef.current;
+      const audioCurrentSrc =
+        audio && audio.hasAttribute("src") ? audio.currentSrc : "";
       const nextStatus: PlaylistStatus = {
-        currentSrc: audio?.currentSrc || playback?.src || "",
+        currentSrc: audioCurrentSrc || playback?.src || "",
         currentTime: audio?.currentTime ?? 0,
         error: null,
         lastEvent: eventName,
@@ -186,14 +191,14 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     (room: SceneSlug, src: string) => {
       const absoluteSrc = new URL(src, window.location.href).href;
 
-      if (primedPlaylistSourcesRef.current.has(absoluteSrc)) {
+      if (primedPlaylistAudioRef.current.has(absoluteSrc)) {
         return;
       }
 
-      primedPlaylistSourcesRef.current.add(absoluteSrc);
-
       const audio = new Audio();
-      audio.preload = "metadata";
+      primedPlaylistAudioRef.current.set(absoluteSrc, audio);
+
+      audio.preload = "auto";
       audio.crossOrigin = "anonymous";
       audio.src = absoluteSrc;
       audio.addEventListener(
@@ -208,7 +213,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       audio.addEventListener(
         "error",
         () => {
-          primedPlaylistSourcesRef.current.delete(absoluteSrc);
+          primedPlaylistAudioRef.current.delete(absoluteSrc);
 
           if (activePlaylistRoomRef.current === room) {
             updatePlaylistStatus("prime-error", {
@@ -223,6 +228,20 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         { once: true },
       );
       audio.load();
+
+      while (primedPlaylistAudioRef.current.size > MAX_PRIMED_PLAYLIST_TRACKS) {
+        const oldestSrc = primedPlaylistAudioRef.current.keys().next().value;
+
+        if (!oldestSrc) {
+          break;
+        }
+
+        const oldestAudio = primedPlaylistAudioRef.current.get(oldestSrc);
+        oldestAudio?.pause();
+        oldestAudio?.removeAttribute("src");
+        oldestAudio?.load();
+        primedPlaylistAudioRef.current.delete(oldestSrc);
+      }
     },
     [updatePlaylistStatus],
   );
@@ -270,6 +289,36 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     [updatePlaylistStatus],
   );
 
+  const stopRoomPlaylistAudio = useCallback(
+    (room: SceneSlug) => {
+      const audio = playlistAudioRef.current;
+
+      playlistRequestIdRef.current += 1;
+      playlistEndedHandlerRef.current = null;
+      playlistPlaybackRef.current = null;
+      activePlaylistRoomRef.current = room;
+      setPlaylistGain(0);
+
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        audio.volume = 0;
+        audio.muted = true;
+      }
+
+      updatePlaylistStatus("stopped", {
+        currentSrc: "",
+        currentTime: 0,
+        networkState: audio?.networkState ?? 0,
+        paused: true,
+        readyState: audio?.readyState ?? 0,
+        room,
+      });
+    },
+    [updatePlaylistStatus],
+  );
+
   const playRoomPlaylistTrack = useCallback(
     async ({
       room,
@@ -300,7 +349,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           audio.volume = volume;
           audio.muted = muted;
 
-          if (!muted && audio.paused) {
+          if (audio.paused) {
             await audio.play();
           }
 
@@ -340,6 +389,15 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        playlistPlaybackRef.current = playback;
+
+        let mutedWarmPlayError: unknown = null;
+        const mutedWarmPlayPromise = muted
+          ? audio.play().catch((error: unknown) => {
+              mutedWarmPlayError = error;
+            })
+          : null;
+
         await waitForPlaylistMetadata(audio);
 
         if (playlistRequestIdRef.current !== requestId) {
@@ -352,8 +410,27 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           audio.currentTime = offset;
         }
 
-        playlistPlaybackRef.current = playback;
-        await audio.play();
+        if (mutedWarmPlayPromise) {
+          await mutedWarmPlayPromise;
+
+          if (mutedWarmPlayError) {
+            throw mutedWarmPlayError;
+          }
+        }
+
+        if (audio.paused) {
+          await audio.play();
+        }
+
+        if (playlistRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        const primedAudio = primedPlaylistAudioRef.current.get(absoluteSrc);
+        primedAudio?.pause();
+        primedAudio?.removeAttribute("src");
+        primedAudio?.load();
+        primedPlaylistAudioRef.current.delete(absoluteSrc);
         updatePlaylistStatus("playing", {
           currentSrc: absoluteSrc,
           currentTime: audio.currentTime,
@@ -361,6 +438,10 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         });
       } catch (error: unknown) {
         if (playlistRequestIdRef.current === requestId) {
+          if (playlistPlaybackRef.current?.requestId === requestId) {
+            playlistPlaybackRef.current = null;
+          }
+
           updatePlaylistStatus("error", {
             currentSrc: absoluteSrc,
             error:
@@ -446,6 +527,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       setActivePlaylistRoom,
       setRoomPlaylistAudioLevel,
       setVideoAudioLevel,
+      stopRoomPlaylistAudio,
       unlockRoomPlaylists,
       videoGain,
     }),
@@ -460,6 +542,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       setActivePlaylistRoom,
       setRoomPlaylistAudioLevel,
       setVideoAudioLevel,
+      stopRoomPlaylistAudio,
       unlockRoomPlaylists,
       videoGain,
     ],

@@ -43,9 +43,16 @@ const scenePlaylists = scenePlaylistsData as Record<SceneSlug, ScenePlaylistData
 export const roomTitles: Record<SceneSlug, string> = {
   construction: "Construction Zone",
   hq: "Paper Planet HQ",
+  "tv-room": "Paper Planet TV Room",
+  "hole-room": "Paper Planet Hole Room",
 };
 
-export const roomSlugs: SceneSlug[] = ["construction", "hq"];
+export const roomSlugs: SceneSlug[] = [
+  "construction",
+  "hq",
+  "tv-room",
+  "hole-room",
+];
 
 export function slugifyPathSegment(value: string) {
   const slug = value

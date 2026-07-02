@@ -4712,5 +4712,13 @@
         }
       }
     ]
+  },
+  "tv-room": {
+    "desktop": [],
+    "mobile": []
+  },
+  "hole-room": {
+    "desktop": [],
+    "mobile": []
   }
 }
