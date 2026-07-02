@@ -53,6 +53,20 @@ function isPoint(value: unknown) {
   return asNumber(value.x) !== null && asNumber(value.y) !== null;
 }
 
+function isExternalLinkUrl(value: unknown) {
+  if (typeof value !== "string" || value.length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function isHotspotAction(value: unknown) {
   if (!isRecord(value) || typeof value.type !== "string") {
     return false;
@@ -64,6 +78,10 @@ function isHotspotAction(value: unknown) {
 
   if (value.type === "mailto") {
     return typeof value.email === "string" && value.email.length > 0;
+  }
+
+  if (value.type === "externalLink") {
+    return isExternalLinkUrl(value.url);
   }
 
   if (value.type === "credits") {

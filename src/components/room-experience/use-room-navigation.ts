@@ -61,6 +61,10 @@ export function getHotspotActionHref(action: Hotspot["action"]) {
     return ROOT_HREF;
   }
 
+  if (action.type === "externalLink") {
+    return action.url;
+  }
+
   if (action.type === "credits") {
     return "#credits";
   }

@@ -26,6 +26,10 @@ export type HotspotAction =
       subject?: string;
     }
   | {
+      type: "externalLink";
+      url: string;
+    }
+  | {
       type: "credits";
     };
 type HotspotBase = {
@@ -149,7 +153,7 @@ export type ScenePlaylistData = {
 };
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "/media";
-const roomVideoVersion = "20260702-room-7-1";
+const roomVideoVersion = "20260702-room-7-1-v2";
 const roomAudioVersion = "20260702-room-7-1";
 
 const mediaUrl = (path: string) =>

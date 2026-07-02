@@ -32,7 +32,17 @@ export function CreditsModal({ onClose }: CreditsModalProps) {
           Credits
         </h2>
         <div className="mt-5 grid gap-3 text-[1.45rem] leading-[0.92] text-white/82 sm:text-[1.85rem]">
-          <p>Created by Connor Schultze</p>
+          <p>
+            Created by{" "}
+            <a
+              href="https://www.youtube.com/@connorklausmusic"
+              target="_blank"
+              rel="noreferrer"
+              className="text-white underline decoration-white/45 underline-offset-4 hover:decoration-white"
+            >
+              Connor Klaus
+            </a>
+          </p>
           <p>
             Web development by{" "}
             <a

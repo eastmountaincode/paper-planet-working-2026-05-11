@@ -135,6 +135,10 @@ function getHotspotActionLabel(hotspot: Hotspot) {
     return `goes to ${scenes[hotspot.action.target].title}`;
   }
 
+  if (hotspot.action.type === "externalLink") {
+    return `opens ${hotspot.action.url}`;
+  }
+
   if (hotspot.action.type === "credits") {
     return "opens credits";
   }
@@ -599,6 +603,14 @@ function HotspotEditorSidebar({
 	                      return;
 	                    }
 
+	                    if (event.target.value === "externalLink") {
+	                      onUpdateSelectedAction({
+	                        type: "externalLink",
+	                        url: "https://vimeo.com/",
+	                      });
+	                      return;
+	                    }
+
 	                    onUpdateSelectedAction({
 	                      type: "navigate",
 	                      target: getDefaultNavigateTarget(target),
@@ -608,6 +620,7 @@ function HotspotEditorSidebar({
 	                >
 	                  <option value="navigate">Navigate to scene</option>
 	                  <option value="mailto">Open email prompt</option>
+	                  <option value="externalLink">Open external link</option>
 	                  <option value="credits">Open credits modal</option>
 	                </select>
 	              </label>
@@ -669,6 +682,22 @@ function HotspotEditorSidebar({
 	                    />
 	                  </label>
 	                </>
+	              ) : selectedHotspot.action.type === "externalLink" ? (
+	                <label className="grid gap-1 text-sm">
+	                  URL
+	                  <input
+	                    type="url"
+	                    value={selectedHotspot.action.url}
+	                    onChange={(event) =>
+	                      onUpdateSelectedAction({
+	                        type: "externalLink",
+	                        url: event.target.value,
+	                      })
+	                    }
+	                    placeholder="https://vimeo.com/..."
+	                    className="border border-white/20 bg-black px-3 py-2 outline-none focus:border-white"
+	                  />
+	                </label>
 	              ) : (
 	                <p className="text-sm text-white/55">
 	                  This hotspot opens the public credits panel.

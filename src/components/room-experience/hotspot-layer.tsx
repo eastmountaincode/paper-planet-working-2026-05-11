@@ -45,6 +45,12 @@ export function HotspotLayer({
           <a
             key={hotspot.id}
             href={getActionHref(action)}
+            target={action.type === "externalLink" ? "_blank" : undefined}
+            rel={
+              action.type === "externalLink"
+                ? "noopener noreferrer"
+                : undefined
+            }
             onFocus={() => onPrimeAction(action)}
             onPointerDown={() => onPrimeAction(action)}
             onPointerEnter={() => onPrimeAction(action)}
