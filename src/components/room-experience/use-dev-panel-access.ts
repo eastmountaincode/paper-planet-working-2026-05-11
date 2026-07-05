@@ -19,12 +19,8 @@ export function useDevPanelAccess(searchParams: SearchParamsLike) {
     helperInitiallyUnlocked,
   );
   const [devPanelOpen, setDevPanelOpen] = useState(helperInitiallyUnlocked);
-  const [devBordersEnabled, setDevBordersEnabled] = useState(
-    helperUnlockedByUrl && searchParams.get("dev") === "1",
-  );
-  const debugHotspots =
-    devPanelUnlocked &&
-    (searchParams.get("hotspots") === "1" || helperUnlockedByUrl);
+  const [devBordersEnabled, setDevBordersEnabled] = useState(false);
+  const debugHotspots = devPanelUnlocked && helperUnlockedByUrl;
   const devBorders = devBordersEnabled && helperUnlockedByUrl;
   const helperShortcutEnabled = devPanelUnlocked && helperUnlockedByUrl;
 

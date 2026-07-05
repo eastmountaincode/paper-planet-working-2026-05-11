@@ -14,6 +14,10 @@ import { EnterGate } from "./enter-gate";
 import { LoadingOverlay } from "./loading-overlay";
 import { MetadataToast } from "./metadata-toast";
 import { RoomStage } from "./room-stage";
+import {
+  clampSafeSquareRatio,
+  DEFAULT_SAFE_SQUARE_SHORT_SIDE_RATIO,
+} from "./safe-square";
 import type {
   PointerPosition,
   RoomExperienceProps,
@@ -65,6 +69,13 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const [videoAudioMuted, setVideoAudioMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [fullBleedPreview, setFullBleedPreview] = useState(false);
+  const [safeSquareVisible, setSafeSquareVisible] = useState(false);
+  const [safeSquareRatio, setSafeSquareRatio] = useState(
+    DEFAULT_SAFE_SQUARE_SHORT_SIDE_RATIO,
+  );
+  const [landscapeSimulationActive, setLandscapeSimulationActive] =
+    useState(false);
   const fadeOutInProgressRef = useRef(false);
   const [audioTransitionMuted, setAudioTransitionMuted] = useState(false);
   const {
@@ -161,8 +172,17 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
   const {
     activeVideoSource,
     orderedHotspots,
+    safeSquareMetrics,
     stageFrameStyle,
-  } = useSceneFrame(scene, sceneViewport, visibleSceneViewport);
+    viewportSize,
+  } = useSceneFrame(
+    scene,
+    sceneViewport,
+    visibleSceneViewport,
+    fullBleedPreview,
+    safeSquareRatio,
+    landscapeSimulationActive,
+  );
   const { loadingPreviewVisible, showLoadingPreview } = useLoadingPreview();
   const {
     metadataToast,
@@ -253,6 +273,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
       <RoomStage
         debugHotspots={debugHotspots}
         devBorders={devBorders}
+        fullBleedPreview={fullBleedPreview}
+        landscapeSimulationActive={landscapeSimulationActive}
         getActionHref={getActionHref}
         onHotspotActionClick={handleHotspotActionClick}
         onPrimeHotspotAction={primeHotspotAction}
@@ -271,6 +293,8 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
         onVideoVariantReady={handleVariantVideoReady}
         orderedHotspots={orderedHotspots}
         resolvedSceneViewport={resolvedSceneViewport}
+        safeSquareMetrics={safeSquareMetrics}
+        safeSquareVisible={safeSquareVisible}
         scene={scene}
         sceneViewport={sceneViewport}
         setVideoElement={setVideoElement}
@@ -308,19 +332,34 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           activePlaylistTrack={activePlaylistTrack}
           activeVideoSource={activeVideoSource}
           audioError={audioError}
+          browserViewport={viewportSize}
           debugHotspots={debugHotspots}
           devBorders={devBorders}
           devPanelOpen={devPanelOpen}
+          fullBleedPreview={fullBleedPreview}
           hasEntered={hasEntered}
+          landscapeSimulationActive={landscapeSimulationActive}
           onEnter={enterPlanet}
           onNavigate={handleSceneNavigation}
           onPrimeScene={primeScenePlaylist}
           onShowLoading={showLoadingPreview}
           onShowMetadata={showMetadataToast}
           onShowPlaylistMetadata={showPlaylistMetadataToast}
+          onToggleFullBleedPreview={() =>
+            setFullBleedPreview((current) => !current)
+          }
+          onToggleLandscapeSimulation={() =>
+            setLandscapeSimulationActive((current) => !current)
+          }
           onTogglePanel={toggleDevPanel}
           onTogglePlaylistAudio={togglePlaylistAudio}
+          onToggleSafeSquare={() =>
+            setSafeSquareVisible((current) => !current)
+          }
           onToggleVideoAudio={toggleVideoAudio}
+          onSafeSquareRatioChange={(value) =>
+            setSafeSquareRatio(clampSafeSquareRatio(value))
+          }
           playlistAudioActive={playlistAudioActive}
           playlistEnabled={playlistEnabled}
           playlistGain={playlistGain}
@@ -329,6 +368,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           playlistTracks={playlistTracks}
           pointerPosition={pointerPosition}
           runtimeScenes={runtimeScenes}
+          safeSquareMetrics={safeSquareMetrics}
+          safeSquareRatio={safeSquareRatio}
+          safeSquareVisible={safeSquareVisible}
           scene={scene}
           sceneViewport={sceneViewport}
           videoAudioActive={videoAudioActive}

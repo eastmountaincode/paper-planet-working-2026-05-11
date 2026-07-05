@@ -4,6 +4,7 @@ import { classNames, devOutline } from "./ui";
 
 type SceneVideoLayersProps = {
   devBorders: boolean;
+  landscapeSimulationActive: boolean;
   onLoadedMetadata: (element: HTMLVideoElement, isVisible: boolean) => void;
   onVariantReady: (viewport: SceneViewport) => void;
   onVisibleTimeUpdate: (timeSeconds: number) => void;
@@ -20,6 +21,7 @@ type SceneVideoLayersProps = {
 
 export function SceneVideoLayers({
   devBorders,
+  landscapeSimulationActive,
   onLoadedMetadata,
   onVariantReady,
   onVisibleTimeUpdate,
@@ -39,13 +41,16 @@ export function SceneVideoLayers({
       {sceneViewports.map((viewport) => {
         const videoSource = getSceneVideoSource(scene, viewport);
         const isVisible = viewport === resolvedSceneViewport;
+        const containsSimulatedLandscape =
+          landscapeSimulationActive && viewport === "desktop";
 
         return (
           <video
             key={`${scene.slug}:${viewport}:embedded-audio`}
             ref={(element) => setVideoElement(viewport, element)}
             className={classNames(
-              "absolute inset-0 z-0 h-full w-full object-cover",
+              "absolute inset-0 z-0 h-full w-full bg-transparent",
+              containsSimulatedLandscape ? "object-contain" : "object-cover",
               isVisible ? "opacity-100" : "opacity-0",
               devOutline(devBorders, 4),
             )}

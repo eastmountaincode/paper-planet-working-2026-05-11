@@ -1,11 +1,13 @@
 import type { MouseEvent } from "react";
 import type { Hotspot, Scene } from "@/lib/scenes";
+import { projectOverlayPositionToSimulatedLandscape } from "./landscape-simulation";
 import { classNames, devOutline } from "./ui";
 
 type SceneOverlayLinksProps = {
   debugHotspots: boolean;
   devBorders: boolean;
   getActionHref: (action: Hotspot["action"]) => string;
+  landscapeSimulationActive: boolean;
   onActionClick: (
     event: MouseEvent<HTMLAnchorElement>,
     action: Hotspot["action"],
@@ -18,6 +20,7 @@ export function SceneOverlayLinks({
   debugHotspots,
   devBorders,
   getActionHref,
+  landscapeSimulationActive,
   onActionClick,
   onPrimeAction,
   scene,
@@ -26,6 +29,9 @@ export function SceneOverlayLinks({
     <>
       {scene.overlays?.map((overlay) => {
         const action = overlay.action;
+        const position = landscapeSimulationActive
+          ? projectOverlayPositionToSimulatedLandscape(overlay.position)
+          : overlay.position;
 
         return (
           <a
@@ -48,9 +54,9 @@ export function SceneOverlayLinks({
               devOutline(devBorders, overlay.zIndex ?? 6),
             )}
             style={{
-              left: `${overlay.position.x}%`,
-              top: `${overlay.position.y}%`,
-              width: `${overlay.position.width}%`,
+              left: `${position.x}%`,
+              top: `${position.y}%`,
+              width: `${position.width}%`,
             }}
           >
             {/* Use a plain img for local hand-drawn UI sprites; Next image optimization can be brittle in dev previews. */}

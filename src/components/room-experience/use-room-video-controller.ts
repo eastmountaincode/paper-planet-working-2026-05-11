@@ -17,6 +17,7 @@ import {
   getMediaErrorMessage,
   isExpectedMediaInterruption,
 } from "./media-utils";
+import { MOBILE_SCENE_VIEWPORT_MAX_ASPECT } from "./safe-square";
 
 type VideoLoadWatch = {
   attempts: number;
@@ -53,7 +54,9 @@ function getPreferredSceneViewport(): SceneViewport {
     return "desktop";
   }
 
-  return window.innerWidth < 768 || window.innerWidth / window.innerHeight < 0.75
+  const browserAspect = window.innerWidth / Math.max(window.innerHeight, 1);
+
+  return browserAspect <= MOBILE_SCENE_VIEWPORT_MAX_ASPECT
     ? "mobile"
     : "desktop";
 }

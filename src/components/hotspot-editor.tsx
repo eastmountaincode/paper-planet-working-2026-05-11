@@ -1160,7 +1160,7 @@ export function HotspotEditor() {
         <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto overscroll-contain bg-black p-4">
           <nav className="flex flex-wrap items-center justify-between gap-3">
             <Link
-              href={target === "enter" ? "/" : `/rooms/${target}?hotspots=1`}
+              href={target === "enter" ? "/" : `/rooms/${target}?debug=true`}
               className="font-mono text-xs uppercase tracking-[0.18em] text-white/70 hover:text-white"
             >
               Paper Planet Hotspots

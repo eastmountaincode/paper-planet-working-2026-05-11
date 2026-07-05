@@ -6,6 +6,14 @@ import {
   DevPanelSoundSection,
   type PlaylistStatusSummary,
 } from "./dev-panel-sound-section";
+import {
+  formatAspect,
+  formatSafeSquareRatio,
+  MAX_SAFE_SQUARE_SHORT_SIDE_RATIO,
+  MIN_SAFE_SQUARE_SHORT_SIDE_RATIO,
+  type SafeSquareMetrics,
+} from "./safe-square";
+import { SIMULATED_LANDSCAPE_LABEL } from "./landscape-simulation";
 import type { PlaylistTrack, PointerPosition } from "./types";
 import { classNames, devOutline } from "./ui";
 
@@ -14,22 +22,34 @@ type VideoSourceSummary = {
   width: number;
 };
 
+type BrowserViewportSummary = {
+  height: number;
+  width: number;
+};
+
 type DevPanelProps = {
   activePlaylistTrack: PlaylistTrack | null;
   activeVideoSource: VideoSourceSummary;
   audioError: string | null;
+  browserViewport: BrowserViewportSummary | null;
   debugHotspots: boolean;
   devBorders: boolean;
   devPanelOpen: boolean;
+  fullBleedPreview: boolean;
   hasEntered: boolean;
+  landscapeSimulationActive: boolean;
   onEnter: () => void;
   onNavigate: (event: MouseEvent<HTMLAnchorElement>, slug: SceneSlug) => void;
   onPrimeScene: (scene: Scene) => void;
   onShowLoading: () => void;
   onShowMetadata: (title: string, album?: string, artist?: string) => void;
   onShowPlaylistMetadata: (track: PlaylistTrack | null) => void;
+  onSafeSquareRatioChange: (value: number) => void;
+  onToggleFullBleedPreview: () => void;
+  onToggleLandscapeSimulation: () => void;
   onTogglePanel: () => void;
   onTogglePlaylistAudio: () => void;
+  onToggleSafeSquare: () => void;
   onToggleVideoAudio: () => void;
   playlistAudioActive: boolean;
   playlistEnabled: boolean;
@@ -39,6 +59,9 @@ type DevPanelProps = {
   playlistTracks: PlaylistTrack[];
   pointerPosition: PointerPosition | null;
   runtimeScenes: Record<SceneSlug, Scene>;
+  safeSquareMetrics: SafeSquareMetrics;
+  safeSquareRatio: number;
+  safeSquareVisible: boolean;
   scene: Scene;
   sceneViewport: SceneViewport | null;
   videoAudioActive: boolean;
@@ -52,18 +75,25 @@ export function DevPanel({
   activePlaylistTrack,
   activeVideoSource,
   audioError,
+  browserViewport,
   debugHotspots,
   devBorders,
   devPanelOpen,
+  fullBleedPreview,
   hasEntered,
+  landscapeSimulationActive,
   onEnter,
   onNavigate,
   onPrimeScene,
   onShowLoading,
   onShowMetadata,
   onShowPlaylistMetadata,
+  onSafeSquareRatioChange,
+  onToggleFullBleedPreview,
+  onToggleLandscapeSimulation,
   onTogglePanel,
   onTogglePlaylistAudio,
+  onToggleSafeSquare,
   onToggleVideoAudio,
   playlistAudioActive,
   playlistEnabled,
@@ -73,6 +103,9 @@ export function DevPanel({
   playlistTracks,
   pointerPosition,
   runtimeScenes,
+  safeSquareMetrics,
+  safeSquareRatio,
+  safeSquareVisible,
   scene,
   sceneViewport,
   videoAudioActive,
@@ -163,6 +196,14 @@ export function DevPanel({
           )}
         >
           <p>Scene: {scene.slug}</p>
+          <p>
+            Browser:{" "}
+            {browserViewport
+              ? `${browserViewport.width}x${browserViewport.height} / ${(
+                  browserViewport.width / browserViewport.height
+                ).toFixed(2)}`
+              : "detecting"}
+          </p>
           <div className="flex justify-end">
             <button
               type="button"
@@ -180,6 +221,105 @@ export function DevPanel({
             {activeVideoSource.height} /{" "}
             {scene.video.durationSeconds.toFixed(3)}s
           </p>
+          <div className="grid grid-cols-2 gap-1 py-1">
+            <button
+              type="button"
+              onClick={onToggleFullBleedPreview}
+              className={classNames(
+                "cursor-pointer border px-1.5 py-1 uppercase hover:border-white",
+                fullBleedPreview
+                  ? "border-cyan-200 text-cyan-100"
+                  : "border-white/30 text-white",
+                devOutline(devBorders, 3),
+              )}
+            >
+              Full bleed
+            </button>
+            <button
+              type="button"
+              onClick={onToggleSafeSquare}
+              className={classNames(
+                "cursor-pointer border px-1.5 py-1 uppercase hover:border-white",
+                safeSquareVisible
+                  ? "border-cyan-200 text-cyan-100"
+                  : "border-white/30 text-white",
+                devOutline(devBorders, 4),
+              )}
+            >
+              Safe zone
+            </button>
+            <button
+              type="button"
+              onClick={onToggleLandscapeSimulation}
+              className={classNames(
+                "col-span-2 cursor-pointer border px-1.5 py-1 uppercase hover:border-white",
+                landscapeSimulationActive
+                  ? "border-cyan-200 text-cyan-100"
+                  : "border-white/30 text-white",
+                devOutline(devBorders, 5),
+              )}
+            >
+              {SIMULATED_LANDSCAPE_LABEL} sim
+            </button>
+          </div>
+          {safeSquareMetrics.mode === "portrait-safe-area" ? (
+            <>
+              <p>
+                Safe: {safeSquareMetrics.widthPixels}x
+                {safeSquareMetrics.heightPixels}px /{" "}
+                {safeSquareMetrics.horizontalMarginPixels}px side /{" "}
+                {safeSquareMetrics.verticalMarginPixels}px top
+              </p>
+              <p>
+                Portrait range: {formatAspect(safeSquareMetrics.minAspect)}-
+                {formatAspect(safeSquareMetrics.maxAspect)}
+              </p>
+            </>
+          ) : (
+            <p>
+              Safe: {safeSquareMetrics.widthPixels}x
+              {safeSquareMetrics.heightPixels}px /{" "}
+              {safeSquareMetrics.horizontalMarginPixels}px side margins
+            </p>
+          )}
+          <label className="grid gap-1 py-1">
+            <span className="flex items-center justify-between gap-2">
+              <span>Safe size</span>
+              <span>{formatSafeSquareRatio(safeSquareRatio)}</span>
+            </span>
+            <input
+              aria-label="Safe zone size"
+              data-safe-square-ratio="true"
+              type="range"
+              min={MIN_SAFE_SQUARE_SHORT_SIDE_RATIO}
+              max={MAX_SAFE_SQUARE_SHORT_SIDE_RATIO}
+              step="0.01"
+              value={safeSquareRatio}
+              onChange={(event) =>
+                onSafeSquareRatioChange(Number(event.target.value))
+              }
+              className="cursor-pointer accent-cyan-200"
+            />
+            <input
+              aria-label="Safe zone ratio value"
+              data-safe-square-ratio-number="true"
+              type="number"
+              min={MIN_SAFE_SQUARE_SHORT_SIDE_RATIO}
+              max={MAX_SAFE_SQUARE_SHORT_SIDE_RATIO}
+              step="0.01"
+              value={safeSquareRatio}
+              onChange={(event) =>
+                onSafeSquareRatioChange(Number(event.target.value))
+              }
+              className="w-16 border border-white/20 bg-black px-1.5 py-1 font-mono text-white outline-none focus:border-cyan-200"
+            />
+          </label>
+          {safeSquareMetrics.mode === "square" ? (
+            <p>
+              Safe aspect: {formatAspect(safeSquareMetrics.minAspect)}-
+              {formatAspect(safeSquareMetrics.maxAspect)}
+            </p>
+          ) : null}
           <p>Borders: {devBorders ? "visible" : "hidden"}</p>
           <p>
             Hotspots:{" "}
@@ -187,7 +327,7 @@ export function DevPanel({
               ? pointerPosition
                 ? `x ${pointerPosition.x}%, y ${pointerPosition.y}%`
                 : "visible"
-              : "add ?hotspots=1"}
+              : "hidden"}
           </p>
         </div>
       </div>
