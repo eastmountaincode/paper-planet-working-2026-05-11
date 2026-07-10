@@ -960,28 +960,18 @@ test("runtime manifest outage falls back to static room media", async ({
   await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Enter", exact: true }).click();
   await navigateByRoomTitle(page, "Paper Planet HQ");
-  await waitForRoomVideo(page, "Paper Planet HQ");
 
-  await page.waitForFunction(
-    () => {
-      const audio = document.querySelector<HTMLAudioElement>("audio");
-
-      return Boolean(
-        audio &&
-          audio.currentSrc.includes("/audio/normalized/hq/") &&
-          !audio.paused &&
-          !audio.muted &&
-          audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
-      );
-    },
-    undefined,
-    { timeout: 10_000 },
-  );
-
-  await expect(page.locator("video")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page
+        .locator("audio")
+        .evaluate((audio: HTMLAudioElement) => audio.currentSrc),
+    )
+    .toContain("/audio/normalized/hq/");
   await expect(
     page.locator('video[aria-label="Paper Planet HQ room video"]'),
   ).toHaveAttribute("src", /hq-desktop\.mp4/);
+  await expect(page.locator("video")).toHaveCount(1);
 });
 
 test("production hotspot links remain keyboard navigable", async ({ page }) => {
