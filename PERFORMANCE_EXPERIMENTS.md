@@ -97,6 +97,12 @@ concurrent production-build run:
 The suite now fails if destination mount exceeds 500 ms or if first frame / veil
 release exceed three seconds.
 
+Final tail sample after all media-controller iterations (five fresh production
+navigations per engine, 15/15 passed): destination elements mounted in
+24.9-52.5 ms, first frames arrived in 132-1,090.6 ms, and loading veils cleared
+in 380-1,099.3 ms. The slowest observed final path therefore remained under
+1.1 seconds across Chrome, Firefox, and WebKit.
+
 ## Iteration 5: remove duplicate startup payloads
 
 The server passed the entire construction scene to a client component that
