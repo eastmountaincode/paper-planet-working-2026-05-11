@@ -13,6 +13,7 @@ import {
 import type { SceneSlug } from "@/lib/scenes";
 
 type PlayRoomPlaylistTrackOptions = {
+  forceReload?: boolean;
   room: SceneSlug;
   src: string;
   startTime: number;
@@ -321,6 +322,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
 
   const playRoomPlaylistTrack = useCallback(
     async ({
+      forceReload = false,
       room,
       src,
       startTime,
@@ -342,7 +344,11 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       playlistRequestIdRef.current = requestId;
       playlistEndedHandlerRef.current = onEnded ?? null;
 
-      if (currentPlayback?.src === absoluteSrc && currentPlayback.room === room) {
+      if (
+        !forceReload &&
+        currentPlayback?.src === absoluteSrc &&
+        currentPlayback.room === room
+      ) {
         if (Math.abs(audio.currentTime - startTime) <= 1.5) {
           activePlaylistRoomRef.current = room;
           setPlaylistGain(nextGain);
@@ -374,7 +380,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         audio.preload = "auto";
         audio.crossOrigin = "anonymous";
 
-        if (audio.src !== absoluteSrc) {
+        if (forceReload || audio.src !== absoluteSrc) {
           audio.src = absoluteSrc;
           audio.load();
         }
@@ -570,6 +576,9 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           });
           playlistEndedHandlerRef.current?.();
         }}
+        onAbort={() => updatePlaylistStatus("abort")}
+        onCanPlay={() => updatePlaylistStatus("canplay")}
+        onEmptied={() => updatePlaylistStatus("emptied")}
         onError={(event) => {
           const playback = playlistPlaybackRef.current;
 
@@ -582,6 +591,11 @@ export function EntryProvider({ children }: { children: ReactNode }) {
             room: playback?.room ?? activePlaylistRoomRef.current ?? "",
           });
         }}
+        onPause={() => updatePlaylistStatus("pause")}
+        onPlaying={() => updatePlaylistStatus("playing")}
+        onStalled={() => updatePlaylistStatus("stalled")}
+        onSuspend={() => updatePlaylistStatus("suspend")}
+        onWaiting={() => updatePlaylistStatus("waiting")}
       />
       {children}
     </EntryContext.Provider>

@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   type Dispatch,
   type MouseEvent,
   type SetStateAction,
@@ -12,18 +11,15 @@ import type {
   Scene,
   SceneSlug,
 } from "@/lib/scenes";
-import {
-  ROOM_TRANSITION_MS,
-  ROOT_HREF,
-} from "./constants";
+import { ROOT_HREF } from "./constants";
 import {
   getMediaErrorMessage,
   isExpectedMediaInterruption,
 } from "./media-utils";
-import { wait } from "./stage-utils";
 import type { PointerPosition } from "./types";
 
 type UseRoomNavigationOptions = {
+  beginVideoTransition: () => void;
   currentScene: Scene;
   fadeOutInProgressRef: { current: boolean };
   hasEntered: boolean;
@@ -32,6 +28,7 @@ type UseRoomNavigationOptions = {
   playlistAudioMuted: boolean;
   playlistVolume: number;
   primeScenePlaylist: (targetScene: Scene) => void;
+  primeSceneVideo: (targetScene: Scene) => void;
   resetStageTransform: () => void;
   resetVideoForSceneSwitch: () => void;
   runtimeScenes: Record<SceneSlug, Scene>;
@@ -39,7 +36,6 @@ type UseRoomNavigationOptions = {
   setAudioError: (message: string | null) => void;
   setAudioTransitionMuted: Dispatch<SetStateAction<boolean>>;
   setCreditsOpen: Dispatch<SetStateAction<boolean>>;
-  setIsExiting: Dispatch<SetStateAction<boolean>>;
   setPlaylistStartTime: Dispatch<SetStateAction<number>>;
   setPlaylistTrackIndex: Dispatch<SetStateAction<number>>;
   setPointerPosition: Dispatch<SetStateAction<PointerPosition | null>>;
@@ -76,6 +72,7 @@ export function getHotspotActionHref(action: Hotspot["action"]) {
 }
 
 export function useRoomNavigation({
+  beginVideoTransition,
   currentScene,
   fadeOutInProgressRef,
   hasEntered,
@@ -84,6 +81,7 @@ export function useRoomNavigation({
   playlistAudioMuted,
   playlistVolume,
   primeScenePlaylist,
+  primeSceneVideo,
   resetStageTransform,
   resetVideoForSceneSwitch,
   runtimeScenes,
@@ -91,7 +89,6 @@ export function useRoomNavigation({
   setAudioError,
   setAudioTransitionMuted,
   setCreditsOpen,
-  setIsExiting,
   setPlaylistStartTime,
   setPlaylistTrackIndex,
   setPointerPosition,
@@ -99,8 +96,6 @@ export function useRoomNavigation({
   setVideoAudioLevel,
   videoVolume,
 }: UseRoomNavigationOptions) {
-  const navigationIdRef = useRef(0);
-
   const switchScene = useCallback(
     (targetScene: Scene, mode: "push" | "replace") => {
       const position = getInitialPlaylistPosition(targetScene);
@@ -133,16 +128,15 @@ export function useRoomNavigation({
   );
 
   const transitionToScene = useCallback(
-    async (targetScene: Scene, mode: "push" | "replace") => {
-      const navigationId = navigationIdRef.current + 1;
-      navigationIdRef.current = navigationId;
+    (targetScene: Scene, mode: "push" | "replace") => {
       fadeOutInProgressRef.current = true;
+      primeSceneVideo(targetScene);
 
       setAudioError(null);
       setAudioTransitionMuted(true);
+      beginVideoTransition();
       setVideoAudioLevel(videoVolume, true);
       setRoomPlaylistAudioLevel(currentScene.slug, playlistVolume, true);
-      setIsExiting(true);
       muteAllVideosForTransition();
 
       const playlistPromise =
@@ -158,16 +152,11 @@ export function useRoomNavigation({
             })
           : Promise.resolve();
 
-      await wait(ROOM_TRANSITION_MS);
-
-      if (navigationIdRef.current !== navigationId) {
-        return;
-      }
-
       switchScene(targetScene, mode);
       void playlistPromise;
     },
     [
+      beginVideoTransition,
       currentScene.slug,
       fadeOutInProgressRef,
       hasEntered,
@@ -175,9 +164,9 @@ export function useRoomNavigation({
       playPlaylistForScene,
       playlistAudioMuted,
       playlistVolume,
+      primeSceneVideo,
       setAudioError,
       setAudioTransitionMuted,
-      setIsExiting,
       setRoomPlaylistAudioLevel,
       setVideoAudioLevel,
       switchScene,
@@ -208,7 +197,7 @@ export function useRoomNavigation({
       const targetScene = runtimeScenes[targetSlug];
 
       if (targetScene) {
-        void transitionToScene(targetScene, "push");
+        transitionToScene(targetScene, "push");
       }
     },
     [currentScene.slug, runtimeScenes, transitionToScene],
@@ -249,9 +238,10 @@ export function useRoomNavigation({
 
       if (targetScene) {
         primeScenePlaylist(targetScene);
+        primeSceneVideo(targetScene);
       }
     },
-    [primeScenePlaylist, runtimeScenes],
+    [primeScenePlaylist, primeSceneVideo, runtimeScenes],
   );
 
   useEffect(() => {
@@ -273,7 +263,7 @@ export function useRoomNavigation({
         return;
       }
 
-      void transitionToScene(targetScene, "replace");
+      transitionToScene(targetScene, "replace");
     };
 
     window.addEventListener("popstate", handleRoomPopState);

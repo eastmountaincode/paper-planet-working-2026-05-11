@@ -24,6 +24,7 @@ import type {
 } from "./types";
 import { useDevPanelAccess } from "./use-dev-panel-access";
 import { useLoadingPreview } from "./use-loading-preview";
+import { useRoomMediaPreloader } from "./use-room-media-preloader";
 import { usePlaylistMetadataToast } from "./use-playlist-metadata-toast";
 import { useRoomVideoController } from "./use-room-video-controller";
 import { useRoomEntryControls } from "./use-room-entry-controls";
@@ -125,14 +126,15 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     stopRoomPlaylistAudio,
   });
   const {
+    beginVideoTransition,
     handleVariantVideoReady,
+    handleVideoPlaybackEvent,
     muteAllVideosForTransition,
     playVisibleVideoOnEnter,
     recordVisibleVideoTime,
     resetVideoForSceneSwitch,
     resolvedSceneViewport,
     sceneViewport,
-    setIsExiting,
     setVideoElement,
     syncVideoElementTime,
     toggleVisibleVideoAudio,
@@ -184,6 +186,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     landscapeSimulationActive,
   );
   const { loadingPreviewVisible, showLoadingPreview } = useLoadingPreview();
+  const { primeSceneVideo } = useRoomMediaPreloader();
   const {
     metadataToast,
     showMetadataToast,
@@ -207,6 +210,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     handleSceneNavigation,
     primeHotspotAction,
   } = useRoomNavigation({
+    beginVideoTransition,
     currentScene: scene,
     fadeOutInProgressRef,
     hasEntered,
@@ -215,6 +219,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     playlistAudioMuted,
     playlistVolume,
     primeScenePlaylist,
+    primeSceneVideo,
     resetStageTransform,
     resetVideoForSceneSwitch,
     runtimeScenes,
@@ -222,7 +227,6 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setAudioError,
     setAudioTransitionMuted,
     setCreditsOpen,
-    setIsExiting,
     setPlaylistStartTime,
     setPlaylistTrackIndex,
     setPointerPosition,
@@ -289,6 +293,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
           element.muted = muted;
           syncVideoElementTime(element);
         }}
+        onVideoPlaybackEvent={handleVideoPlaybackEvent}
         onVideoTimeUpdate={recordVisibleVideoTime}
         onVideoVariantReady={handleVariantVideoReady}
         orderedHotspots={orderedHotspots}

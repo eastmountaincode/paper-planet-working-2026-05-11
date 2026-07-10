@@ -1,5 +1,6 @@
 import type { CSSProperties, MouseEvent, PointerEvent, Ref } from "react";
 import type { Hotspot, Scene, SceneViewport } from "@/lib/scenes";
+import type { VideoPlaybackEvent } from "./use-room-video-controller";
 import { HotspotLayer } from "./hotspot-layer";
 import {
   CENTERED_SOURCE_WIDTH_PERCENT,
@@ -29,6 +30,11 @@ type RoomStageProps = {
   onVideoLoadedMetadata: (
     element: HTMLVideoElement,
     isVisible: boolean,
+  ) => void;
+  onVideoPlaybackEvent: (
+    viewport: SceneViewport,
+    element: HTMLVideoElement,
+    event: VideoPlaybackEvent,
   ) => void;
   onVideoTimeUpdate: (timeSeconds: number) => void;
   onVideoVariantReady: (viewport: SceneViewport) => void;
@@ -62,6 +68,7 @@ export function RoomStage({
   onStagePointerMove,
   onStagePointerUp,
   onVideoLoadedMetadata,
+  onVideoPlaybackEvent,
   onVideoTimeUpdate,
   onVideoVariantReady,
   orderedHotspots,
@@ -124,6 +131,7 @@ export function RoomStage({
             devBorders={devBorders}
             landscapeSimulationActive={landscapeSimulationActive}
             onLoadedMetadata={onVideoLoadedMetadata}
+            onPlaybackEvent={onVideoPlaybackEvent}
             onVariantReady={onVideoVariantReady}
             onVisibleTimeUpdate={onVideoTimeUpdate}
             resolvedSceneViewport={resolvedSceneViewport}

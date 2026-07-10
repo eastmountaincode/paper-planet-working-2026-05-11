@@ -13,6 +13,7 @@ import {
 
 type PlaylistStatus = {
   currentSrc: string;
+  currentTime: number;
   error: string | null;
   lastEvent: string;
   networkState: number;
@@ -21,6 +22,7 @@ type PlaylistStatus = {
 };
 
 type PlayRoomPlaylistTrack = (options: {
+  forceReload?: boolean;
   muted?: boolean;
   onEnded?: () => void;
   room: SceneSlug;
@@ -28,6 +30,28 @@ type PlayRoomPlaylistTrack = (options: {
   startTime: number;
   volume: number;
 }) => Promise<unknown>;
+
+type PlaylistRecoveryWatch = {
+  attempts: number;
+  key: string;
+  lastAttemptAt: number;
+  lastObservedTime: number;
+  lastProgressAt: number;
+};
+
+const PLAYLIST_HEALTH_CHECK_MS = 2_000;
+const PLAYLIST_STALL_THRESHOLD_MS = 5_000;
+const PLAYLIST_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
+
+function createPlaylistRecoveryWatch(key = ""): PlaylistRecoveryWatch {
+  return {
+    attempts: 0,
+    key,
+    lastAttemptAt: 0,
+    lastObservedTime: 0,
+    lastProgressAt: performance.now(),
+  };
+}
 
 type UseScenePlaylistControllerOptions = {
   audioTransitionMuted: boolean;
@@ -71,6 +95,7 @@ export function useScenePlaylistController({
   const [playlistStartTime, setPlaylistStartTime] = useState(0);
   const playlistAudioActiveRef = useRef(false);
   const playlistStatusRef = useRef(playlistStatus);
+  const playlistRecoveryRef = useRef<PlaylistRecoveryWatch | null>(null);
 
   const playlistEnabled = scene.playlist?.enabled ?? false;
   const playlistTracks = useMemo(
@@ -134,6 +159,142 @@ export function useScenePlaylistController({
       setAudioError,
     ],
   );
+
+  useEffect(() => {
+    playlistRecoveryRef.current = null;
+  }, [activePlaylistTrack?.src, scene.slug]);
+
+  useEffect(() => {
+    if (!playlistAudioActive || !activePlaylistTrack) {
+      playlistRecoveryRef.current = null;
+      return undefined;
+    }
+
+    const recoveryKey = `${scene.slug}:${activePlaylistTrack.src}`;
+
+    const checkPlaylistHealth = () => {
+      if (document.hidden || !navigator.onLine) {
+        return;
+      }
+
+      const status = playlistStatusRef.current;
+      const now = performance.now();
+      let watch = playlistRecoveryRef.current;
+
+      if (!watch || watch.key !== recoveryKey) {
+        watch = createPlaylistRecoveryWatch(recoveryKey);
+        watch.lastObservedTime = status.currentTime;
+        playlistRecoveryRef.current = watch;
+      }
+
+      const progressed =
+        status.currentTime > watch.lastObservedTime + 0.05 ||
+        status.currentTime < watch.lastObservedTime - 0.5;
+
+      if (progressed) {
+        watch.attempts = 0;
+        watch.lastProgressAt = now;
+        watch.lastObservedTime = status.currentTime;
+        return;
+      }
+
+      watch.lastObservedTime = status.currentTime;
+
+      const explicitlyUnhealthy =
+        Boolean(status.error) ||
+        status.paused ||
+        status.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+      const stoppedProgressing =
+        now - watch.lastProgressAt >= PLAYLIST_STALL_THRESHOLD_MS &&
+        status.readyState < HTMLMediaElement.HAVE_FUTURE_DATA;
+
+      if (!explicitlyUnhealthy && !stoppedProgressing) {
+        return;
+      }
+
+      const backoffIndex = Math.min(
+        watch.attempts,
+        PLAYLIST_RECOVERY_BACKOFF_MS.length - 1,
+      );
+      const recoveryDelay = PLAYLIST_RECOVERY_BACKOFF_MS[backoffIndex];
+
+      if (now - watch.lastAttemptAt < recoveryDelay) {
+        return;
+      }
+
+      watch.attempts += 1;
+      watch.lastAttemptAt = now;
+
+      const position = getSyncedPlaylistPosition();
+      const targetTrack = position
+        ? playlistTracks[position.trackIndex]
+        : activePlaylistTrack;
+
+      if (!targetTrack) {
+        return;
+      }
+
+      if (position) {
+        setPlaylistTrackIndex(position.trackIndex);
+        setPlaylistStartTime(position.currentTime);
+      }
+
+      void playRoomPlaylistTrack({
+        forceReload: watch.attempts >= 2,
+        room: scene.slug,
+        src: targetTrack.src,
+        startTime: position?.currentTime ?? status.currentTime,
+        volume: playlistVolume,
+        onEnded: () => {
+          setPlaylistTrackIndex(
+            (current) => (current + 1) % playlistTracks.length,
+          );
+          setPlaylistStartTime(0);
+        },
+      })
+        .then(() => {
+          setActivePlaylistRoom(scene.slug, playlistVolume, false);
+        })
+        .catch((error: unknown) => {
+          if (!isExpectedMediaInterruption(error)) {
+            setAudioError(
+              getMediaErrorMessage(error, "Playlist audio recovery failed"),
+            );
+          }
+        });
+    };
+
+    const handleReturn = () => {
+      if (!document.hidden) {
+        checkPlaylistHealth();
+      }
+    };
+    const interval = window.setInterval(
+      checkPlaylistHealth,
+      PLAYLIST_HEALTH_CHECK_MS,
+    );
+
+    window.addEventListener("focus", handleReturn);
+    window.addEventListener("online", handleReturn);
+    document.addEventListener("visibilitychange", handleReturn);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleReturn);
+      window.removeEventListener("online", handleReturn);
+      document.removeEventListener("visibilitychange", handleReturn);
+    };
+  }, [
+    activePlaylistTrack,
+    getSyncedPlaylistPosition,
+    playRoomPlaylistTrack,
+    playlistAudioActive,
+    playlistTracks,
+    playlistVolume,
+    scene.slug,
+    setActivePlaylistRoom,
+    setAudioError,
+  ]);
 
   const playPlaylistForScene = useCallback(
     async (targetScene: Scene, muted = false) => {

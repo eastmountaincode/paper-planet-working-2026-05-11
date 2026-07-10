@@ -7,17 +7,18 @@ import {
   type SetStateAction,
 } from "react";
 import type { Scene, SceneViewport } from "@/lib/scenes";
-import { sceneViewports } from "@/lib/scenes";
+import { getSceneVideoSource, sceneViewports } from "@/lib/scenes";
 import {
+  ROOM_TRANSITION_MS,
   VIDEO_LOAD_RECOVERY_LIMIT,
   VIDEO_LOAD_RECOVERY_MS,
   VIDEO_READY_CHECK_MS,
 } from "./constants";
 import {
+  getPreferredSceneViewport,
   getMediaErrorMessage,
   isExpectedMediaInterruption,
 } from "./media-utils";
-import { MOBILE_SCENE_VIEWPORT_MAX_ASPECT } from "./safe-square";
 
 type VideoLoadWatch = {
   attempts: number;
@@ -25,6 +26,30 @@ type VideoLoadWatch = {
   lastRecoveryAt: number;
   startedAt: number;
 };
+
+export type VideoPlaybackEvent =
+  | "abort"
+  | "emptied"
+  | "ended"
+  | "error"
+  | "pause"
+  | "playing"
+  | "stalled"
+  | "suspend"
+  | "waiting";
+
+type VideoHealthWatch = {
+  attempts: number;
+  key: string;
+  lastAttemptAt: number;
+  lastEvent: VideoPlaybackEvent | "progress" | "init";
+  lastObservedTime: number;
+  lastProgressAt: number;
+};
+
+const VIDEO_HEALTH_CHECK_MS = 2_000;
+const VIDEO_STALL_THRESHOLD_MS = 5_000;
+const VIDEO_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
 
 type UseRoomVideoControllerOptions = {
   audioTransitionMuted: boolean;
@@ -49,16 +74,15 @@ function createVideoLoadWatch(): VideoLoadWatch {
   };
 }
 
-function getPreferredSceneViewport(): SceneViewport {
-  if (typeof window === "undefined") {
-    return "desktop";
-  }
-
-  const browserAspect = window.innerWidth / Math.max(window.innerHeight, 1);
-
-  return browserAspect <= MOBILE_SCENE_VIEWPORT_MAX_ASPECT
-    ? "mobile"
-    : "desktop";
+function createVideoHealthWatch(key = ""): VideoHealthWatch {
+  return {
+    attempts: 0,
+    key,
+    lastAttemptAt: 0,
+    lastEvent: "init",
+    lastObservedTime: 0,
+    lastProgressAt: performance.now(),
+  };
 }
 
 export function useRoomVideoController({
@@ -84,7 +108,10 @@ export function useRoomVideoController({
   const sceneViewportRef = useRef<SceneViewport | null>(null);
   const visibleSceneViewportRef = useRef<SceneViewport | null>(null);
   const pendingVideoFrameKeyRef = useRef<string | null>(null);
+  const transitionMinimumUntilRef = useRef(0);
+  const transitionRevealTimerRef = useRef<number | null>(null);
   const videoLoadWatchRef = useRef(createVideoLoadWatch());
+  const videoHealthWatchRef = useRef<VideoHealthWatch | null>(null);
   const [sceneViewport, setSceneViewport] = useState<SceneViewport | null>(null);
   const [visibleSceneViewport, setVisibleSceneViewport] =
     useState<SceneViewport | null>(null);
@@ -172,6 +199,27 @@ export function useRoomVideoController({
     return viewport ? videoElementsRef.current[viewport] : null;
   }, []);
 
+  const revealReadyVideo = useCallback(() => {
+    if (transitionRevealTimerRef.current !== null) {
+      window.clearTimeout(transitionRevealTimerRef.current);
+      transitionRevealTimerRef.current = null;
+    }
+
+    const reveal = () => {
+      transitionRevealTimerRef.current = null;
+      setAudioTransitionMuted(false);
+      setIsExiting(false);
+    };
+    const remaining = transitionMinimumUntilRef.current - performance.now();
+
+    if (remaining > 0) {
+      transitionRevealTimerRef.current = window.setTimeout(reveal, remaining);
+      return;
+    }
+
+    reveal();
+  }, [setAudioTransitionMuted]);
+
   const markVideoReady = useCallback(() => {
     if (fadeOutInProgressRef.current) {
       return;
@@ -179,10 +227,20 @@ export function useRoomVideoController({
 
     pendingVideoFrameKeyRef.current = null;
     videoLoadWatchRef.current = createVideoLoadWatch();
-    setAudioTransitionMuted(false);
     setVideoReady(true);
-    setIsExiting(false);
-  }, [fadeOutInProgressRef, setAudioTransitionMuted]);
+    revealReadyVideo();
+  }, [fadeOutInProgressRef, revealReadyVideo]);
+
+  const beginVideoTransition = useCallback(() => {
+    if (transitionRevealTimerRef.current !== null) {
+      window.clearTimeout(transitionRevealTimerRef.current);
+      transitionRevealTimerRef.current = null;
+    }
+
+    transitionMinimumUntilRef.current = performance.now() + ROOM_TRANSITION_MS;
+    setIsExiting(true);
+    setVideoReady(false);
+  }, []);
 
   const confirmVideoFrameReady = useCallback(
     (viewport: SceneViewport, video: HTMLVideoElement) => {
@@ -382,6 +440,52 @@ export function useRoomVideoController({
     ],
   );
 
+  const handleVideoPlaybackEvent = useCallback(
+    (
+      viewport: SceneViewport,
+      video: HTMLVideoElement,
+      event: VideoPlaybackEvent,
+    ) => {
+      const visibleViewport =
+        visibleSceneViewportRef.current ?? sceneViewportRef.current;
+
+      if (viewport !== visibleViewport) {
+        return;
+      }
+
+      const key = `${scene.slug}:${viewport}:${video.currentSrc || video.src}`;
+      let watch = videoHealthWatchRef.current;
+
+      if (!watch || watch.key !== key) {
+        watch = createVideoHealthWatch(key);
+        watch.lastObservedTime = video.currentTime;
+        videoHealthWatchRef.current = watch;
+      }
+
+      watch.lastEvent = event;
+
+      if (event === "playing") {
+        watch.attempts = 0;
+        watch.lastProgressAt = performance.now();
+        watch.lastObservedTime = video.currentTime;
+      }
+
+      if (
+        event === "abort" ||
+        event === "emptied" ||
+        event === "error" ||
+        event === "pause" ||
+        event === "stalled"
+      ) {
+        watch.lastProgressAt = Math.min(
+          watch.lastProgressAt,
+          performance.now() - VIDEO_STALL_THRESHOLD_MS,
+        );
+      }
+    },
+    [scene.slug],
+  );
+
   const muteAllVideosForTransition = useCallback(() => {
     for (const viewport of sceneViewports) {
       const video = videoElementsRef.current[viewport];
@@ -399,6 +503,7 @@ export function useRoomVideoController({
     lastVideoTimeRef.current = 0;
     pendingVideoFrameKeyRef.current = null;
     videoLoadWatchRef.current = createVideoLoadWatch();
+    videoHealthWatchRef.current = null;
     setVideoReady(false);
   }, []);
 
@@ -452,6 +557,15 @@ export function useRoomVideoController({
       window.removeEventListener("orientationchange", updateSceneViewport);
     };
   }, [applyVideoElementAudioState, syncVideoElementTime]);
+
+  useEffect(
+    () => () => {
+      if (transitionRevealTimerRef.current !== null) {
+        window.clearTimeout(transitionRevealTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (videoReady || !sceneViewport) {
@@ -529,6 +643,127 @@ export function useRoomVideoController({
     sceneViewport,
     syncVideoElementTime,
     videoReady,
+  ]);
+
+  useEffect(() => {
+    const checkVideoHealth = () => {
+      if (document.hidden || !navigator.onLine) {
+        return;
+      }
+
+      const video = getVisibleVideoElement();
+      const viewport =
+        visibleSceneViewportRef.current ?? sceneViewportRef.current;
+
+      if (!video || !viewport) {
+        return;
+      }
+
+      const key = `${scene.slug}:${viewport}:${video.currentSrc || video.src}`;
+      const now = performance.now();
+      let watch = videoHealthWatchRef.current;
+
+      if (!watch || watch.key !== key) {
+        watch = createVideoHealthWatch(key);
+        watch.lastObservedTime = video.currentTime;
+        videoHealthWatchRef.current = watch;
+      }
+
+      const progressed =
+        video.currentTime > watch.lastObservedTime + 0.05 ||
+        video.currentTime < watch.lastObservedTime - 0.5;
+
+      if (progressed) {
+        watch.attempts = 0;
+        watch.lastEvent = "progress";
+        watch.lastObservedTime = video.currentTime;
+        watch.lastProgressAt = now;
+        return;
+      }
+
+      watch.lastObservedTime = video.currentTime;
+
+      const sourceIsBroken =
+        Boolean(video.error) ||
+        video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+      const explicitlyUnhealthy =
+        sourceIsBroken ||
+        video.paused ||
+        !video.currentSrc;
+      const stoppedProgressing =
+        !video.seeking &&
+        now - watch.lastProgressAt >= VIDEO_STALL_THRESHOLD_MS;
+
+      if (!explicitlyUnhealthy && !stoppedProgressing) {
+        return;
+      }
+
+      const backoffIndex = Math.min(
+        watch.attempts,
+        VIDEO_RECOVERY_BACKOFF_MS.length - 1,
+      );
+      const recoveryDelay = VIDEO_RECOVERY_BACKOFF_MS[backoffIndex];
+
+      if (now - watch.lastAttemptAt < recoveryDelay) {
+        return;
+      }
+
+      watch.attempts += 1;
+      watch.lastAttemptAt = now;
+
+      if (sourceIsBroken || watch.attempts >= 3) {
+        const expectedSource = getSceneVideoSource(scene, viewport).src;
+        const absoluteExpectedSource = new URL(
+          expectedSource,
+          window.location.href,
+        ).href;
+
+        pendingVideoFrameKeyRef.current = null;
+        setVideoReady(false);
+
+        if (video.src !== absoluteExpectedSource) {
+          video.src = expectedSource;
+        }
+
+        video.load();
+      } else {
+        syncVideoElementTime(video);
+      }
+
+      void video.play().catch((error: unknown) => {
+        if (!isExpectedMediaInterruption(error)) {
+          setAudioError(
+            getMediaErrorMessage(error, "Room video recovery failed"),
+          );
+        }
+      });
+    };
+
+    const handleReturn = () => {
+      if (!document.hidden) {
+        checkVideoHealth();
+      }
+    };
+    const interval = window.setInterval(
+      checkVideoHealth,
+      VIDEO_HEALTH_CHECK_MS,
+    );
+
+    window.addEventListener("focus", handleReturn);
+    window.addEventListener("online", handleReturn);
+    document.addEventListener("visibilitychange", handleReturn);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleReturn);
+      window.removeEventListener("online", handleReturn);
+      document.removeEventListener("visibilitychange", handleReturn);
+    };
+  }, [
+    getVisibleVideoElement,
+    scene,
+    setAudioError,
+    syncVideoElementTime,
   ]);
 
   useEffect(() => {
@@ -633,7 +868,9 @@ export function useRoomVideoController({
           2,
         )} / ${video.paused ? "paused" : "playing"} / ${video.currentTime.toFixed(
           1,
-        )}s / ready ${video.readyState} / net ${video.networkState}`,
+        )}s / ready ${video.readyState} / net ${video.networkState} / health ${
+          videoHealthWatchRef.current?.lastEvent ?? "init"
+        } / retries ${videoHealthWatchRef.current?.attempts ?? 0}`,
       );
     };
 
@@ -652,17 +889,31 @@ export function useRoomVideoController({
   ]);
 
   return {
+    beginVideoTransition,
     handleVariantVideoReady,
+    handleVideoPlaybackEvent,
     isExiting,
     muteAllVideosForTransition,
     playVisibleVideoOnEnter,
     recordVisibleVideoTime: (timeSeconds: number) => {
       lastVideoTimeRef.current = timeSeconds;
+
+      const watch = videoHealthWatchRef.current;
+
+      if (
+        watch &&
+        (timeSeconds > watch.lastObservedTime + 0.05 ||
+          timeSeconds < watch.lastObservedTime - 0.5)
+      ) {
+        watch.attempts = 0;
+        watch.lastEvent = "progress";
+        watch.lastObservedTime = timeSeconds;
+        watch.lastProgressAt = performance.now();
+      }
     },
     resetVideoForSceneSwitch,
     resolvedSceneViewport,
     sceneViewport,
-    setIsExiting,
     setVideoElement: (
       viewport: SceneViewport,
       element: HTMLVideoElement | null,
