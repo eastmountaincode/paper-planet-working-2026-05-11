@@ -460,6 +460,11 @@ recovery, offline return, and room cycling.
   public room CSS payload from 58 KB to 43 KB while preserving the graph render.
 - The overview reports hotspot, playlist, and settings sources independently
   (`3/3 R2` or partial fallback) instead of inferring all three from hotspots.
+- The overview consumes the consolidated `/api/runtime` snapshot directly, so
+  opening it now makes one manifest request instead of three separate admin
+  calls while retaining tag invalidation after every publish.
+- A final width sweep at 1440, 1024, 768, 390, and 320 pixels found no page
+  overflow; every graph node remained inside the canvas.
 - Production room hotspots remain keyboard/screen-reader links when debug
   outlines are hidden, and the entry artwork exposes one keyboard action rather
   than three duplicate buttons.

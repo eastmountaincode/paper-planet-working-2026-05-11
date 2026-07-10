@@ -231,33 +231,20 @@ export function RoomOverviewAdmin() {
 
     async function loadRoomData() {
       try {
-        const [hotspotsResponse, playlistsResponse, settingsResponse] =
-          await Promise.all([
-            fetch("/api/admin/hotspots", { cache: "no-store" }),
-            fetch("/api/admin/playlists", { cache: "no-store" }),
-            fetch("/api/admin/settings", { cache: "no-store" }),
-          ]);
+        const response = await fetch("/api/runtime", { cache: "no-store" });
 
-        if (
-          !hotspotsResponse.ok ||
-          !playlistsResponse.ok ||
-          !settingsResponse.ok
-        ) {
-          throw new Error("Could not load one or more live manifests.");
+        if (!response.ok) {
+          throw new Error("Could not load the live room manifests.");
         }
 
-        const hotspotsResult = (await hotspotsResponse.json()) as {
-          manifest?: unknown;
-          source?: ManifestSource;
+        const result = (await response.json()) as {
+          hotspots?: { manifest?: unknown; source?: ManifestSource };
+          playlists?: { manifest?: unknown; source?: ManifestSource };
+          settings?: { manifest?: unknown; source?: ManifestSource };
         };
-        const playlistsResult = (await playlistsResponse.json()) as {
-          manifest?: unknown;
-          source?: ManifestSource;
-        };
-        const settingsResult = (await settingsResponse.json()) as {
-          manifest?: unknown;
-          source?: ManifestSource;
-        };
+        const hotspotsResult = result.hotspots ?? {};
+        const playlistsResult = result.playlists ?? {};
+        const settingsResult = result.settings ?? {};
 
         if (!canceled) {
           const nextHotspots = normalizeHotspotManifest(
