@@ -240,6 +240,14 @@ reload loops on slower links. Normal cross-browser checks run one browser at a
 time so CDN timing represents one visitor; the 20-minute soak explicitly keeps
 Chrome, Firefox, and WebKit concurrent for sustained-load coverage.
 
+A forced-GC cleanup audit completed 30 desktop/mobile round trips. Baseline was
+498 DOM nodes, 414 JavaScript listeners, one video, and 4.72 MB used heap. While
+the final reserve was intentionally alive this rose to 648 nodes, 440 listeners,
+two videos, and 5.03 MB, with only one video playing. Six seconds later it
+returned to 500 nodes, 415 listeners, and one playing video; used heap remained
+5.03 MB. The reserve therefore cleans up its DOM/listener footprint rather than
+accumulating a pipeline per orientation change.
+
 ## Rejected experiment: shorter MP4 keyframe intervals
 
 The published HQ H.264 files have a 10.417-second fixed keyframe interval.
