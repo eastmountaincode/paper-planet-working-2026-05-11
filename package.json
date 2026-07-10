@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:media": "playwright test --grep-invert @soak",
+    "test:media:soak": "playwright test --grep @soak",
     "audio:normalize": "node scripts/normalize-playlist-audio.mjs",
     "font:build": "node scripts/build-paper-planet-font.mjs",
     "playlists:generate": "node scripts/generate-playlists.mjs",
@@ -25,6 +27,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

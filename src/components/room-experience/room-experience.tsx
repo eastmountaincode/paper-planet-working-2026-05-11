@@ -186,7 +186,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     landscapeSimulationActive,
   );
   const { loadingPreviewVisible, showLoadingPreview } = useLoadingPreview();
-  const { primeSceneVideo } = useRoomMediaPreloader();
+  const { consumeSceneVideo, primeSceneVideo } = useRoomMediaPreloader();
   const {
     metadataToast,
     showMetadataToast,
@@ -211,6 +211,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     primeHotspotAction,
   } = useRoomNavigation({
     beginVideoTransition,
+    consumeSceneVideo,
     currentScene: scene,
     fadeOutInProgressRef,
     hasEntered,
@@ -223,6 +224,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     resetStageTransform,
     resetVideoForSceneSwitch,
     runtimeScenes,
+    sceneSlugRef,
     setActiveScene,
     setAudioError,
     setAudioTransitionMuted,

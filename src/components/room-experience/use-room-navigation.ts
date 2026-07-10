@@ -20,6 +20,7 @@ import type { PointerPosition } from "./types";
 
 type UseRoomNavigationOptions = {
   beginVideoTransition: () => void;
+  consumeSceneVideo: (targetScene: Scene) => void;
   currentScene: Scene;
   fadeOutInProgressRef: { current: boolean };
   hasEntered: boolean;
@@ -32,6 +33,7 @@ type UseRoomNavigationOptions = {
   resetStageTransform: () => void;
   resetVideoForSceneSwitch: () => void;
   runtimeScenes: Record<SceneSlug, Scene>;
+  sceneSlugRef: { current: SceneSlug };
   setActiveScene: Dispatch<SetStateAction<Scene>>;
   setAudioError: (message: string | null) => void;
   setAudioTransitionMuted: Dispatch<SetStateAction<boolean>>;
@@ -73,6 +75,7 @@ export function getHotspotActionHref(action: Hotspot["action"]) {
 
 export function useRoomNavigation({
   beginVideoTransition,
+  consumeSceneVideo,
   currentScene,
   fadeOutInProgressRef,
   hasEntered,
@@ -85,6 +88,7 @@ export function useRoomNavigation({
   resetStageTransform,
   resetVideoForSceneSwitch,
   runtimeScenes,
+  sceneSlugRef,
   setActiveScene,
   setAudioError,
   setAudioTransitionMuted,
@@ -101,6 +105,7 @@ export function useRoomNavigation({
       const position = getInitialPlaylistPosition(targetScene);
 
       fadeOutInProgressRef.current = false;
+      sceneSlugRef.current = targetScene.slug;
       setPointerPosition(null);
       resetStageTransform();
       resetVideoForSceneSwitch();
@@ -119,6 +124,7 @@ export function useRoomNavigation({
       fadeOutInProgressRef,
       resetStageTransform,
       resetVideoForSceneSwitch,
+      sceneSlugRef,
       setActiveScene,
       setCreditsOpen,
       setPlaylistStartTime,
@@ -130,7 +136,7 @@ export function useRoomNavigation({
   const transitionToScene = useCallback(
     (targetScene: Scene, mode: "push" | "replace") => {
       fadeOutInProgressRef.current = true;
-      primeSceneVideo(targetScene);
+      consumeSceneVideo(targetScene);
 
       setAudioError(null);
       setAudioTransitionMuted(true);
@@ -157,6 +163,7 @@ export function useRoomNavigation({
     },
     [
       beginVideoTransition,
+      consumeSceneVideo,
       currentScene.slug,
       fadeOutInProgressRef,
       hasEntered,
@@ -164,7 +171,6 @@ export function useRoomNavigation({
       playPlaylistForScene,
       playlistAudioMuted,
       playlistVolume,
-      primeSceneVideo,
       setAudioError,
       setAudioTransitionMuted,
       setRoomPlaylistAudioLevel,

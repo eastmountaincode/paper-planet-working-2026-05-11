@@ -22,6 +22,22 @@ function releaseVideo(video: HTMLVideoElement) {
 export function useRoomMediaPreloader() {
   const preloadedVideosRef = useRef(new Map<string, PreloadedVideo>());
 
+  const consumeSceneVideo = useCallback((scene: Scene) => {
+    const viewport = getPreferredSceneViewport();
+    const key = getSceneVideoPreloadKey(scene, viewport);
+    const existing = preloadedVideosRef.current.get(key);
+
+    if (!existing) {
+      return;
+    }
+
+    // The decoded response data remains browser-cacheable, but the detached
+    // element must not compete with the visible element for range requests or
+    // a hardware decoder once navigation begins.
+    releaseVideo(existing.element);
+    preloadedVideosRef.current.delete(key);
+  }, []);
+
   const primeSceneVideo = useCallback((scene: Scene) => {
     const viewport = getPreferredSceneViewport();
     const source = getSceneVideoSource(scene, viewport);
@@ -107,5 +123,5 @@ export function useRoomMediaPreloader() {
     [],
   );
 
-  return { primeSceneVideo };
+  return { consumeSceneVideo, primeSceneVideo };
 }

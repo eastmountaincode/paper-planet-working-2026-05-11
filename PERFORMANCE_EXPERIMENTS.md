@@ -46,6 +46,15 @@ Result in the first warm Chromium sample:
 
 The transition is now bounded by the intentional 200 ms animation instead of adding media loading after that animation. This is a reduction from about 354.9 ms to about 205.1 ms in the measured warm path.
 
+Mobile Chromium sample using the separate 27.2 MB HQ portrait video:
+
+- Destination mobile element mounted: 17.5 ms after click
+- Destination metadata ready: 22.1 ms
+- First decoded destination frame: 159.4 ms
+- Loading veil released: 206.7 ms
+
+The same animation-bounded behavior therefore holds on the mobile viewport branch.
+
 ## Audio reliability iteration 1: playlist watchdog
 
 Hypothesis: a 30-second sync check is too slow for an unexpected pause or network stall, and the existing status omits several useful media events.
@@ -94,7 +103,70 @@ Results:
 - HQ video contains stereo AAC audio at 48 kHz.
 - The sampled HQ playlist file contains stereo MP3 audio at 44.1 kHz.
 
-Long multi-browser soak tests are still required.
+### Cross-browser endurance result
+
+- Google Chrome: 20-minute dual-audio soak passed.
+- Playwright Firefox: 20-minute dual-audio soak passed.
+- Playwright WebKit: 20-minute dual-audio soak passed.
+- All three ran concurrently with five-second health samples.
+- All three passed background/foreground return at 25% elapsed time.
+- All three passed offline pause plus online recovery at 50% elapsed time.
+- All three passed simultaneous invalid video and playlist source restoration at 75% elapsed time.
+- Final result: 3 passed in 20.3 minutes.
+
+Native Safari WebDriver was attempted, but macOS reported that Safari's **Allow remote automation** setting is disabled. WebKit coverage is therefore automated; native Safari remains an explicit manual verification boundary.
+
+## Iteration after soak: room ownership race
+
+Repeated room cycling exposed two related ownership issues:
+
+- A room whose playlist was enabled but had zero active tracks could report playlist audio as active and re-unmute the now-empty shared audio element after stopping it.
+- A navigation that landed while the initial R2 manifest request was resolving could update the visible room before `sceneSlugRef` updated, allowing the late manifest response to restore the stale previous room.
+
+Fixes:
+
+- Playlist audio is active only when an active track exists.
+- The canonical scene ref is updated synchronously in the navigation transaction before React state and before any pending manifest response can read it.
+
+Result: the rapid Construction / TV / Construction / Hole / Construction / HQ
+cycle passes in Chrome, Firefox, and WebKit. Ten concurrent Chrome repetitions of
+the transition plus offline-return path also pass.
+
+## Iteration after soak: one steady-state video pipeline
+
+Rapid room cycling showed that every room mounted both its desktop and mobile
+video even though only one could be visible. Intent preloading could add a third
+media pipeline during navigation.
+
+Implementation:
+
+- Mount only the preferred viewport variant in steady state.
+- During an actual viewport/orientation change, retain the old variant until the
+  replacement has decoded a frame, then remove it.
+- Consume and release a detached intent preloader when navigation begins so it
+  cannot compete with the visible video for range requests or a decoder.
+- Keep the previous video audible until viewport replacement is frame-ready.
+
+Results:
+
+- The previously failing rapid Chrome room cycle now completes in 5.2 seconds.
+- Steady-state video elements per room dropped from two to one.
+- A 250 ms desktop hover warm-up produced a 268.5 ms HQ ready time in a fresh
+  Chromium context versus 462.8 ms without hover in the same sample series.
+- Desktop to mobile to desktop source handoff passes in Chrome, Firefox, and
+  WebKit, with one steady-state element after each handoff and playlist audio
+  continuing through the change.
+
+## Audio reliability iteration 3: stale request ownership
+
+The cross-browser matrix exposed a race where an old muted transition request
+could finish after the current unmuted playlist request and mute the shared
+audio element again. The media service already owns request sequencing, so the
+controller's redundant post-request mixer writes were removed.
+
+Result: ten concurrent Chrome repetitions pass, followed by a clean 12/12
+Chrome, Firefox, and WebKit quick matrix covering dual playback, independent
+recovery, offline return, and room cycling.
 
 ## Admin room overview
 

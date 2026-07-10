@@ -1,5 +1,5 @@
 import type { Scene, SceneViewport } from "@/lib/scenes";
-import { getSceneVideoSource, sceneViewports } from "@/lib/scenes";
+import { getSceneVideoSource } from "@/lib/scenes";
 import { classNames, devOutline } from "./ui";
 import type { VideoPlaybackEvent } from "./use-room-video-controller";
 
@@ -43,9 +43,16 @@ export function SceneVideoLayers({
     return null;
   }
 
+  // Keep one media pipeline in steady state. During an orientation/viewport
+  // change, retain the currently visible variant only until the preferred
+  // variant has decoded a frame, then SceneVideoLayers naturally drops it.
+  const mountedViewports = Array.from(
+    new Set<SceneViewport>([resolvedSceneViewport, sceneViewport]),
+  );
+
   return (
     <>
-      {sceneViewports.map((viewport) => {
+      {mountedViewports.map((viewport) => {
         const videoSource = getSceneVideoSource(scene, viewport);
         const isVisible = viewport === resolvedSceneViewport;
         const containsSimulatedLandscape =

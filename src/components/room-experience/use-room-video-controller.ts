@@ -533,16 +533,17 @@ export function useRoomVideoController({
         return;
       }
 
-      if (visibleViewport !== nextViewport && nextVideo) {
-        syncVideoElementTime(nextVideo);
-        applyVideoElementAudioState(nextViewport);
-        nextVideo.preload = "auto";
-        void nextVideo.play().catch(() => undefined);
+      if (visibleViewport !== nextViewport) {
+        setVideoReady(false);
 
-        if (nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          visibleSceneViewportRef.current = nextViewport;
-          setVisibleSceneViewport(nextViewport);
-          applyVideoElementAudioState(nextViewport);
+        if (nextVideo) {
+          syncVideoElementTime(nextVideo);
+          nextVideo.preload = "auto";
+          void nextVideo.play().catch(() => undefined);
+
+          if (nextVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            confirmVideoFrameReady(nextViewport, nextVideo);
+          }
         }
       }
     };
@@ -556,7 +557,11 @@ export function useRoomVideoController({
       window.removeEventListener("resize", updateSceneViewport);
       window.removeEventListener("orientationchange", updateSceneViewport);
     };
-  }, [applyVideoElementAudioState, syncVideoElementTime]);
+  }, [
+    applyVideoElementAudioState,
+    confirmVideoFrameReady,
+    syncVideoElementTime,
+  ]);
 
   useEffect(
     () => () => {

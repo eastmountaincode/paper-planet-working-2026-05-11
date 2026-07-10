@@ -109,6 +109,7 @@ export function useScenePlaylistController({
   const playlistAudioActive =
     hasEntered &&
     playlistEnabled &&
+    Boolean(activePlaylistTrack) &&
     !playlistAudioMuted &&
     !audioTransitionMuted;
 
@@ -252,9 +253,6 @@ export function useScenePlaylistController({
           setPlaylistStartTime(0);
         },
       })
-        .then(() => {
-          setActivePlaylistRoom(scene.slug, playlistVolume, false);
-        })
         .catch((error: unknown) => {
           if (!isExpectedMediaInterruption(error)) {
             setAudioError(
@@ -338,14 +336,12 @@ export function useScenePlaylistController({
           setPlaylistStartTime(0);
         },
       });
-      setActivePlaylistRoom(targetScene.slug, targetPlaylist.volume, muted);
     },
     [
       hasEntered,
       playRoomPlaylistTrack,
       playlistAudioMuted,
       sceneSlugRef,
-      setActivePlaylistRoom,
       stopRoomPlaylistAudio,
     ],
   );
