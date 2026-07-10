@@ -13,6 +13,37 @@ type PreloadedVideo = {
 
 const MAX_PRELOADED_ROOM_VIDEOS = 2;
 const VIDEO_PRELOAD_INTENT_DELAY_MS = 80;
+const MIN_VIDEO_PRELOAD_DOWNLINK_MBPS = 5;
+
+type NavigatorWithConnection = Navigator & {
+  connection?: {
+    downlink?: number;
+    effectiveType?: string;
+    saveData?: boolean;
+  };
+};
+
+function shouldPrimeSceneVideo() {
+  const connection = (navigator as NavigatorWithConnection).connection;
+
+  if (!connection) {
+    return true;
+  }
+
+  if (
+    connection.saveData ||
+    connection.effectiveType === "slow-2g" ||
+    connection.effectiveType === "2g"
+  ) {
+    return false;
+  }
+
+  return !(
+    typeof connection.downlink === "number" &&
+    connection.downlink > 0 &&
+    connection.downlink <= MIN_VIDEO_PRELOAD_DOWNLINK_MBPS
+  );
+}
 
 function releaseVideo(video: HTMLVideoElement) {
   video.pause();
@@ -47,6 +78,14 @@ export function useRoomMediaPreloader() {
   }, []);
 
   const primeSceneVideo = useCallback((scene: Scene) => {
+    // A detached media element is valuable on a fast connection, but on a
+    // constrained link its partial range request competes with the element
+    // mounted by the eventual click. Honor explicit data-saving preferences
+    // and Chromium's conservative downlink estimate when available.
+    if (!shouldPrimeSceneVideo()) {
+      return;
+    }
+
     const viewport = getPreferredSceneViewport();
     const source = getSceneVideoSource(scene, viewport);
     const key = getSceneVideoPreloadKey(scene, viewport);

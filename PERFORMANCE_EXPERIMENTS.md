@@ -170,6 +170,41 @@ timestamp. In a paired fresh Chrome sample, no-hover readiness was 519.4 ms and
 a 250 ms hover reduced it to 286.4 ms, with one steady-state video element in
 both cases.
 
+## Iteration 7: make intent preloading connection-aware
+
+A simulated 5 Mbps / 80 ms connection exposed the opposite edge of detached
+preloading. Across three cache-disabled Chrome pairs, direct navigation had a
+5.31-second median readiness time, while starting a detached preload after a
+250 ms hover had a 7.40-second median. The incomplete range request could
+compete with the clicked element instead of helping it.
+
+Video intent warming now declines to start when the browser reports data-saver,
+2G / slow-2G, or a downlink estimate at or below 5 Mbps. Browsers that do not
+expose the Network Information API retain the bounded 80 ms intent behavior.
+The cross-browser regression test injects a constrained connection and proves
+that hover creates zero HQ video requests before the click in Chrome, Firefox,
+and WebKit; navigation then creates the one required visible pipeline.
+
+This preserves the measured fast-link hover gain while avoiding speculative
+media transfer where it is most likely to hurt. The remaining constrained-link
+timing variation also occurred with no preload request and is therefore part of
+the MP4 seek / network tail rather than duplicate ownership.
+
+## Rejected experiment: size-neutral five-second GOP
+
+A second encoding pass tested whether a shorter keyframe interval could fit
+inside the published HQ desktop payload by raising CRF:
+
+- Five-second GOP / CRF 28: 24.54 MB, still 7.6% larger than published; SSIM
+  0.9797 and average PSNR 40.34 dB against the original.
+- Five-second GOP / CRF 30: 20.75 MB, 9.0% smaller than published; SSIM 0.9714
+  and average PSNR 38.65 dB.
+- Published file: 22.80 MB; SSIM 0.9888 and average PSNR 43.37 dB.
+
+Decision: reject both candidates. CRF 28 does not solve transfer size and CRF
+30 gives up substantially more image fidelity for a modest size reduction. No
+media object or checked-in asset was changed.
+
 ## Rejected experiment: shorter MP4 keyframe intervals
 
 The published HQ H.264 files have a 10.417-second fixed keyframe interval.

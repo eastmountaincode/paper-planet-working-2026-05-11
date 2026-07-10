@@ -383,6 +383,45 @@ test("HQ transition is bounded and both audio streams advance", async ({
   });
 });
 
+test("constrained connections avoid competing detached video preloads", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      value: {
+        downlink: 1,
+        effectiveType: "4g",
+        saveData: false,
+      },
+    });
+  });
+
+  const hqVideoRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (request.url().includes("/rooms/hq-desktop.mp4")) {
+      hqVideoRequests.push(request.url());
+    }
+  });
+
+  await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Enter", exact: true }).click();
+
+  const hqLink = page.getByRole("link", {
+    name: "Paper Planet HQ",
+    exact: true,
+  });
+
+  await hqLink.hover();
+  await page.waitForTimeout(250);
+  expect(hqVideoRequests).toHaveLength(0);
+
+  await hqLink.click();
+  await waitForRoomVideo(page, "Paper Planet HQ");
+  expect(hqVideoRequests.length).toBeGreaterThan(0);
+});
+
 test("video and playlist recover independently", async ({ page }) => {
   await openHqWithDualAudio(page);
 
