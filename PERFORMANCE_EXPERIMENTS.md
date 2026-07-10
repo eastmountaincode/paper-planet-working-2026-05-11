@@ -365,7 +365,8 @@ iterations, the complete soak was rerun on commit `1306461`: Chrome, Firefox,
 and WebKit again passed 3/3 in 20.2 minutes with all three injections and
 continuous dual-clock advancement.
 
-The final quick production matrix reports 37 passed and 2 expected skips. The
+The final production matrix reports 49 passed and 2 expected skips with retries
+disabled. The
 skips are the Chromium-only DevTools lifecycle case in Firefox and WebKit;
 Chrome passed an actual three-second frozen-page lifecycle and recovered both
 streams.
