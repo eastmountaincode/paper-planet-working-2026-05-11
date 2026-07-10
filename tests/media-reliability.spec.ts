@@ -353,6 +353,116 @@ test("viewport handoff keeps one steady-state video pipeline", async ({
   ).toHaveAttribute("src", /hq-desktop\.mp4/);
 });
 
+test("playlist track boundaries preserve dual playback", async ({ page }) => {
+  await openHqWithDualAudio(page);
+  const before = await readMediaState(page);
+
+  const startingSource = await page.locator("audio").evaluate(
+    (audio: HTMLAudioElement) => {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0.5) {
+        throw new Error("Playlist duration was not ready.");
+      }
+
+      const source = audio.currentSrc;
+      audio.currentTime = audio.duration - 0.2;
+      return source;
+    },
+  );
+
+  await page.waitForFunction(
+    (previousSource) => {
+      const audio = document.querySelector<HTMLAudioElement>("audio");
+
+      return Boolean(
+        audio &&
+          audio.currentSrc !== previousSource &&
+          !audio.paused &&
+          !audio.muted &&
+          audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+      );
+    },
+    startingSource,
+    { timeout: 10_000 },
+  );
+  await waitForHealthyDualAudio(page);
+  await page.waitForTimeout(750);
+
+  const after = await readMediaState(page);
+
+  expect(after.playlist.src).not.toBe(startingSource);
+  expect(mediaAdvanced(before, after).videoAdvanced).toBe(true);
+});
+
+test("latest rapid room navigation owns both media streams", async ({ page }) => {
+  await openHqWithDualAudio(page);
+
+  for (const roomTitle of [
+    "Paper Planet TV Room",
+    "Paper Planet Hole Room",
+    "Construction Zone",
+    "Paper Planet HQ",
+  ]) {
+    await navigateByRoomTitle(page, roomTitle);
+  }
+
+  await waitForHealthyDualAudio(page, 15_000);
+  await expect(page.locator("video")).toHaveCount(1);
+
+  const before = await readMediaState(page);
+
+  expect(before.video.src).toContain("/rooms/hq-desktop.mp4");
+  expect(before.playlist.src).toContain("/audio/normalized/hq/");
+  expect(before.video.volume).toBeCloseTo(0.8, 2);
+  expect(before.playlist.volume).toBeCloseTo(0.71, 2);
+
+  await page.waitForTimeout(1_000);
+
+  const after = await readMediaState(page);
+  const advanced = mediaAdvanced(before, after);
+
+  expect(advanced.videoAdvanced).toBe(true);
+  expect(advanced.playlistAdvanced).toBe(true);
+});
+
+test("intentional mixer mutes survive watchdog intervals", async ({ page }) => {
+  await openHqWithDualAudio(page);
+  const beforePlaylistMute = await readMediaState(page);
+
+  await page
+    .getByRole("button", { name: "Mute playlist", exact: true })
+    .click();
+  await page.waitForTimeout(6_000);
+
+  const whilePlaylistMuted = await readMediaState(page);
+
+  expect(whilePlaylistMuted.playlist.muted).toBe(true);
+  expect(whilePlaylistMuted.video.muted).toBe(false);
+  expect(
+    mediaAdvanced(beforePlaylistMute, whilePlaylistMuted).videoAdvanced,
+  ).toBe(true);
+
+  await page
+    .getByRole("button", { name: "Unmute playlist", exact: true })
+    .click();
+  await waitForHealthyDualAudio(page);
+
+  const beforeVideoMute = await readMediaState(page);
+
+  await page.getByRole("button", { name: "Mute", exact: true }).click();
+  await page.waitForTimeout(6_000);
+
+  const whileVideoMuted = await readMediaState(page);
+
+  expect(whileVideoMuted.video.muted).toBe(true);
+  expect(whileVideoMuted.playlist.muted).toBe(false);
+  expect(
+    mediaAdvanced(beforeVideoMute, whileVideoMuted).playlistAdvanced,
+  ).toBe(true);
+
+  await page.getByRole("button", { name: "Unmute", exact: true }).click();
+  await waitForHealthyDualAudio(page);
+});
+
 test("@soak dual audio remains healthy for twenty minutes", async ({
   context,
   page,

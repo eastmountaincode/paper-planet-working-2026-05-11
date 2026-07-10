@@ -55,6 +55,27 @@ Mobile Chromium sample using the separate 27.2 MB HQ portrait video:
 
 The same animation-bounded behavior therefore holds on the mobile viewport branch.
 
+## Rejected experiment: shorter MP4 keyframe intervals
+
+The published HQ H.264 files have a 10.417-second fixed keyframe interval.
+Versioned candidates were encoded directly from the local masters with CRF 24,
+fast-start metadata, and fixed five-second and two-second keyframe intervals.
+No live object was overwritten.
+
+Results:
+
+- Five-second desktop: 33.6 MB versus 22.8 MB published (+48%).
+- Five-second mobile: 42.1 MB versus 27.2 MB published (+55%).
+- Two-second desktop: 66.3 MB; two-second mobile: 86.6 MB.
+- Across 17 random local seeks, the five-second candidate changed desktop p95
+  single-frame decode from 112.3 ms to 103.7 ms and mobile p95 from 155.2 ms to
+  140.9 ms, with no average-time improvement.
+
+Decision: reject the shorter-GOP candidates. Their object-size, transfer, and
+cache-pressure costs outweigh the modest tail improvement. Keep the immediate
+destination mount and bounded intent warming, which attack perceived latency
+without tripling the media payload.
+
 ## Audio reliability iteration 1: playlist watchdog
 
 Hypothesis: a 30-second sync check is too slow for an unexpected pause or network stall, and the existing status omits several useful media events.
@@ -175,3 +196,8 @@ recovery, offline return, and room cycling.
 - Directional desktop/mobile hotspot and overlay connections are deduplicated; two-way paths are combined visually.
 - The graph uses a deterministic layout that expands from two to three columns as the room count grows and adds a minimap only beyond six rooms.
 - Admin navigation, spacing, width, header hierarchy, and responsive tab behavior were refined without changing publishing workflows.
+- Compact screens use a vertically growing one-column graph instead of shrinking
+  two columns below legible text size; this layout scales to the planned nine
+  rooms without horizontal page overflow.
+- Non-interactive graph elements are removed from keyboard focus, and the admin
+  tabs implement roving focus with Left/Right/Home/End navigation.

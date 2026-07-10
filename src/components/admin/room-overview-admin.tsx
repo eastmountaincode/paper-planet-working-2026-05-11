@@ -204,6 +204,17 @@ export function RoomOverviewAdmin() {
   );
   const [source, setSource] = useState<ManifestSource>("static");
   const [status, setStatus] = useState("Loading live room data...");
+  const [compactLayout, setCompactLayout] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const updateLayout = () => setCompactLayout(mediaQuery.matches);
+
+    updateLayout();
+    mediaQuery.addEventListener("change", updateLayout);
+
+    return () => mediaQuery.removeEventListener("change", updateLayout);
+  }, []);
 
   useEffect(() => {
     let canceled = false;
@@ -270,7 +281,8 @@ export function RoomOverviewAdmin() {
   const { edges, nodes } = useMemo(() => {
     const connections = deriveConnections(hotspotManifest);
     const connectionCounts = new Map<SceneSlug, Set<SceneSlug>>();
-    const columns = hotspotSceneSlugs.length > 4 ? 3 : 2;
+    const columns = compactLayout ? 1 : hotspotSceneSlugs.length > 4 ? 3 : 2;
+    const rowGap = compactLayout ? 190 : 230;
 
     for (const slug of hotspotSceneSlugs) {
       connectionCounts.set(slug, new Set());
@@ -286,7 +298,7 @@ export function RoomOverviewAdmin() {
       type: "room",
       position: {
         x: (index % columns) * 340,
-        y: Math.floor(index / columns) * 230,
+        y: Math.floor(index / columns) * rowGap,
       },
       data: {
         connections: connectionCounts.get(slug)?.size ?? 0,
@@ -306,7 +318,11 @@ export function RoomOverviewAdmin() {
       edges: createRoomEdges(connections),
       nodes: roomNodes,
     };
-  }, [hotspotManifest, playlistManifest, settingsManifest]);
+  }, [compactLayout, hotspotManifest, playlistManifest, settingsManifest]);
+
+  const graphHeight = compactLayout
+    ? Math.max(840, nodes.length * 190 + 80)
+    : undefined;
 
   return (
     <section className="grid gap-5">
@@ -346,13 +362,19 @@ export function RoomOverviewAdmin() {
             {source === "r2" ? "R2 manifest" : "Static fallback"} / {status}
           </p>
         </div>
-        <div className="h-[34rem] w-full sm:h-[38rem]">
+        <div
+          className="h-[34rem] w-full sm:h-[38rem]"
+          style={graphHeight ? { height: graphHeight } : undefined}
+        >
           <ReactFlow
+            key={compactLayout ? "compact" : "wide"}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
             nodesDraggable={false}
             nodesConnectable={false}
+            nodesFocusable={false}
+            edgesFocusable={false}
             elementsSelectable={false}
             fitView
             fitViewOptions={{ padding: 0.2 }}

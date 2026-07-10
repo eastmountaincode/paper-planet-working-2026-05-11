@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { AudioAdmin } from "@/components/admin/audio-admin";
 import { FontAdmin } from "@/components/admin/font-admin";
 import { RoomOverviewAdmin } from "@/components/admin/room-overview-admin";
@@ -29,6 +29,33 @@ export function AdminShell() {
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
     router.refresh();
+  }
+
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) {
+    let nextIndex = index;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % tabs.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = tabs.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+
+    setActiveTab(nextTab.id);
+    event.currentTarget.parentElement
+      ?.querySelector<HTMLButtonElement>(`#admin-tab-${nextTab.id}`)
+      ?.focus();
   }
 
   return (
@@ -68,15 +95,17 @@ export function AdminShell() {
           aria-label="Admin sections"
           role="tablist"
         >
-          {tabs.map((tab) => (
+          {tabs.map((tab, index) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
               id={`admin-tab-${tab.id}`}
               role="tab"
               aria-controls={`admin-panel-${tab.id}`}
               aria-selected={activeTab === tab.id}
+              tabIndex={activeTab === tab.id ? 0 : -1}
               className={classNames(
                 "shrink-0 px-3 py-2.5 text-sm transition",
                 activeTab === tab.id
