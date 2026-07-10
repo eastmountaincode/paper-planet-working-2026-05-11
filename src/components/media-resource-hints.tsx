@@ -9,7 +9,7 @@ export function MediaResourceHints() {
     const mediaOrigin = new URL(mediaBaseUrl).origin;
 
     ReactDOM.prefetchDNS(mediaOrigin);
-    ReactDOM.preconnect(mediaOrigin);
+    ReactDOM.preconnect(mediaOrigin, { crossOrigin: "anonymous" });
   }
 
   return null;

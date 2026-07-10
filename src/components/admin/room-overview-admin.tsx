@@ -33,6 +33,12 @@ import {
 
 type ManifestSource = "r2" | "static";
 
+type ManifestSources = {
+  hotspots: ManifestSource;
+  playlists: ManifestSource;
+  settings: ManifestSource;
+};
+
 type RoomNodeData = {
   connections: number;
   desktopHotspots: number;
@@ -202,7 +208,11 @@ export function RoomOverviewAdmin() {
   const [settingsManifest, setSettingsManifest] = useState(
     createStaticSiteSettingsManifest,
   );
-  const [source, setSource] = useState<ManifestSource>("static");
+  const [sources, setSources] = useState<ManifestSources>({
+    hotspots: "static",
+    playlists: "static",
+    settings: "static",
+  });
   const [status, setStatus] = useState("Loading live room data...");
   const [compactLayout, setCompactLayout] = useState(false);
 
@@ -242,9 +252,11 @@ export function RoomOverviewAdmin() {
         };
         const playlistsResult = (await playlistsResponse.json()) as {
           manifest?: unknown;
+          source?: ManifestSource;
         };
         const settingsResult = (await settingsResponse.json()) as {
           manifest?: unknown;
+          source?: ManifestSource;
         };
 
         if (!canceled) {
@@ -257,7 +269,11 @@ export function RoomOverviewAdmin() {
             normalizePlaylistManifest(playlistsResult.manifest),
           );
           setSettingsManifest(normalizeSiteSettingsManifest(settingsResult.manifest));
-          setSource(hotspotsResult.source === "r2" ? "r2" : "static");
+          setSources({
+            hotspots: hotspotsResult.source === "r2" ? "r2" : "static",
+            playlists: playlistsResult.source === "r2" ? "r2" : "static",
+            settings: settingsResult.source === "r2" ? "r2" : "static",
+          });
           setStatus(`Updated ${nextHotspots.updatedAt}`);
         }
       } catch (error) {
@@ -323,6 +339,15 @@ export function RoomOverviewAdmin() {
   const graphHeight = compactLayout
     ? Math.max(840, nodes.length * 190 + 80)
     : undefined;
+  const liveSourceCount = Object.values(sources).filter(
+    (source) => source === "r2",
+  ).length;
+  const sourceLabel =
+    liveSourceCount === 3
+      ? "3/3 R2 manifests"
+      : liveSourceCount === 0
+        ? "Static fallback"
+        : `${liveSourceCount}/3 R2 / partial fallback`;
 
   return (
     <section className="grid gap-5">
@@ -359,7 +384,7 @@ export function RoomOverviewAdmin() {
             {nodes.length} rooms / {edges.length} connection groups
           </p>
           <p className="font-mono text-[11px] text-white/35">
-            {source === "r2" ? "R2 manifest" : "Static fallback"} / {status}
+            {sourceLabel} / {status}
           </p>
         </div>
         <div

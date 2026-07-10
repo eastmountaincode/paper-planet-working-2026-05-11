@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +28,7 @@ type UnlockRoomPlaylistOptions = PlayRoomPlaylistTrackOptions & {
 type EntryContextValue = {
   hasEntered: boolean;
   markEntered: () => void;
+  getPlaylistStatusSnapshot: () => PlaylistStatus;
   playRoomPlaylistTrack: (
     options: PlayRoomPlaylistTrackOptions,
   ) => Promise<void>;
@@ -117,13 +117,18 @@ function clampMediaTime(audio: HTMLAudioElement, time: number) {
   return Math.min(safeTime, Math.max(audio.duration - 0.05, 0));
 }
 
-function waitForPlaylistMetadata(audio: HTMLAudioElement) {
+function waitForPlaylistMetadata(
+  audio: HTMLAudioElement,
+  isCurrentRequest: () => boolean,
+) {
   if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
     return Promise.resolve();
   }
 
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => {
+      audio.removeEventListener("abort", handleInterruption);
+      audio.removeEventListener("emptied", handleInterruption);
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.removeEventListener("error", handleError);
     };
@@ -133,9 +138,25 @@ function waitForPlaylistMetadata(audio: HTMLAudioElement) {
     };
     const handleError = () => {
       cleanup();
+
+      if (!isCurrentRequest()) {
+        resolve();
+        return;
+      }
+
       reject(new Error(getMediaErrorMessage(audio)));
     };
+    const handleInterruption = () => {
+      if (isCurrentRequest()) {
+        return;
+      }
 
+      cleanup();
+      resolve();
+    };
+
+    audio.addEventListener("abort", handleInterruption);
+    audio.addEventListener("emptied", handleInterruption);
     audio.addEventListener("loadedmetadata", handleLoadedMetadata, {
       once: true,
     });
@@ -150,6 +171,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
   const playlistEndedHandlerRef = useRef<(() => void) | null>(null);
   const playlistRequestIdRef = useRef(0);
   const activePlaylistRoomRef = useRef<SceneSlug | null>(null);
+  const playlistStatusRef = useRef<PlaylistStatus>(initialPlaylistStatus);
   const [hasEntered, setHasEntered] = useState(false);
   const [playlistStatus, setPlaylistStatus] = useState<PlaylistStatus>(
     initialPlaylistStatus,
@@ -183,10 +205,30 @@ export function EntryProvider({ children }: { children: ReactNode }) {
         ...overrides,
       };
 
+      playlistStatusRef.current = nextStatus;
       setPlaylistStatus(nextStatus);
     },
     [],
   );
+
+  const getPlaylistStatusSnapshot = useCallback((): PlaylistStatus => {
+    const audio = playlistAudioRef.current;
+    const playback = playlistPlaybackRef.current;
+    const activeRoom = activePlaylistRoomRef.current;
+    const current = playlistStatusRef.current;
+    const audioCurrentSrc =
+      audio && audio.hasAttribute("src") ? audio.currentSrc : "";
+
+    return {
+      ...current,
+      currentSrc: audioCurrentSrc || playback?.src || "",
+      currentTime: audio?.currentTime ?? current.currentTime,
+      networkState: audio?.networkState ?? current.networkState,
+      paused: audio?.paused ?? current.paused,
+      readyState: audio?.readyState ?? current.readyState,
+      room: activeRoom ?? current.room,
+    };
+  }, []);
 
   const primeRoomPlaylistTrack = useCallback(
     (room: SceneSlug, src: string) => {
@@ -340,6 +382,14 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       const absoluteSrc = new URL(src, window.location.href).href;
       const currentPlayback = playlistPlaybackRef.current;
       const nextGain = muted ? 0 : volume;
+      const primedAudio = primedPlaylistAudioRef.current.get(absoluteSrc);
+
+      if (primedAudio) {
+        primedAudio.pause();
+        primedAudio.removeAttribute("src");
+        primedAudio.load();
+        primedPlaylistAudioRef.current.delete(absoluteSrc);
+      }
 
       playlistRequestIdRef.current = requestId;
       playlistEndedHandlerRef.current = onEnded ?? null;
@@ -404,7 +454,10 @@ export function EntryProvider({ children }: { children: ReactNode }) {
             })
           : null;
 
-        await waitForPlaylistMetadata(audio);
+        await waitForPlaylistMetadata(
+          audio,
+          () => playlistRequestIdRef.current === requestId,
+        );
 
         if (playlistRequestIdRef.current !== requestId) {
           return;
@@ -432,11 +485,6 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const primedAudio = primedPlaylistAudioRef.current.get(absoluteSrc);
-        primedAudio?.pause();
-        primedAudio?.removeAttribute("src");
-        primedAudio?.load();
-        primedPlaylistAudioRef.current.delete(absoluteSrc);
         updatePlaylistStatus("playing", {
           currentSrc: absoluteSrc,
           currentTime: audio.currentTime,
@@ -510,19 +558,9 @@ export function EntryProvider({ children }: { children: ReactNode }) {
     [playRoomPlaylistTrack, primeRoomPlaylistTrack],
   );
 
-  useEffect(() => {
-    const interval = window.setInterval(
-      () => updatePlaylistStatus("tick"),
-      1000,
-    );
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [updatePlaylistStatus]);
-
   const value = useMemo(
     () => ({
+      getPlaylistStatusSnapshot,
       hasEntered,
       markEntered,
       playRoomPlaylistTrack,
@@ -538,6 +576,7 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       videoGain,
     }),
     [
+      getPlaylistStatusSnapshot,
       hasEntered,
       markEntered,
       playRoomPlaylistTrack,

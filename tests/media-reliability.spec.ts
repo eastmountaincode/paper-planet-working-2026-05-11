@@ -21,6 +21,13 @@ type MediaState = {
   };
 };
 
+type NavigationMetrics = {
+  elementMs: number | null;
+  firstFrameMs: number | null;
+  metadataMs: number | null;
+  overlayMs: number | null;
+};
+
 const dualAudioSettings = {
   manifest: {
     version: 1,
@@ -34,6 +41,8 @@ const dualAudioSettings = {
   },
   source: "r2",
 };
+
+const HQ_VIDEO_DURATION_SECONDS = 237.142;
 
 async function readMediaState(page: Page): Promise<MediaState> {
   return page.evaluate(() => {
@@ -118,7 +127,110 @@ async function waitForHealthyDualAudio(page: Page, timeout = 8_000) {
   }
 }
 
-async function openHqWithDualAudio(page: Page) {
+async function beginHqNavigationMetrics(page: Page) {
+  await page.evaluate(() => {
+    const metrics: NavigationMetrics = {
+      elementMs: null,
+      firstFrameMs: null,
+      metadataMs: null,
+      overlayMs: null,
+    };
+    const startedAt = performance.now();
+    const targetWindow = window as typeof window & {
+      __hqNavigationMetrics?: NavigationMetrics;
+    };
+    let frameCallbackRequested = false;
+
+    targetWindow.__hqNavigationMetrics = metrics;
+
+    const sample = () => {
+      const video = document.querySelector<HTMLVideoElement>(
+        'video[aria-label="Paper Planet HQ room video"]',
+      );
+
+      if (!video) {
+        window.requestAnimationFrame(sample);
+        return;
+      }
+
+      const elapsed = () => performance.now() - startedAt;
+
+      metrics.elementMs ??= elapsed();
+
+      if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        metrics.metadataMs ??= elapsed();
+      }
+
+      if (!frameCallbackRequested) {
+        frameCallbackRequested = true;
+        const videoWithFrameCallback = video as HTMLVideoElement & {
+          requestVideoFrameCallback?: (callback: () => void) => number;
+        };
+
+        if (typeof videoWithFrameCallback.requestVideoFrameCallback === "function") {
+          videoWithFrameCallback.requestVideoFrameCallback(() => {
+            metrics.firstFrameMs ??= elapsed();
+          });
+        }
+      }
+
+      if (
+        metrics.firstFrameMs === null &&
+        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        !video.paused &&
+        video.currentTime > 0
+      ) {
+        metrics.firstFrameMs = elapsed();
+      }
+
+      if (!document.querySelector('img[src*="paper-planet-loading"]')) {
+        metrics.overlayMs ??= elapsed();
+      }
+
+      if (
+        metrics.metadataMs === null ||
+        metrics.firstFrameMs === null ||
+        metrics.overlayMs === null
+      ) {
+        window.requestAnimationFrame(sample);
+      }
+    };
+
+    window.requestAnimationFrame(sample);
+  });
+}
+
+async function readHqNavigationMetrics(page: Page) {
+  await page.waitForFunction(
+    () => {
+      const metrics = (
+        window as typeof window & {
+          __hqNavigationMetrics?: NavigationMetrics;
+        }
+      ).__hqNavigationMetrics;
+
+      return Boolean(
+        metrics?.elementMs !== null &&
+          metrics?.metadataMs !== null &&
+          metrics?.firstFrameMs !== null &&
+          metrics?.overlayMs !== null,
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+
+  return page.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          __hqNavigationMetrics?: NavigationMetrics;
+        }
+      ).__hqNavigationMetrics as NavigationMetrics,
+  );
+}
+
+async function openHqWithDualAudio(page: Page, measureNavigation = false) {
   await page.route("**/api/runtime", async (route) => {
     const response = await route.fetch();
     const result = (await response.json()) as Record<string, unknown>;
@@ -136,6 +248,9 @@ async function openHqWithDualAudio(page: Page) {
   await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
   await settingsLoaded;
   await page.getByRole("button", { name: "Enter", exact: true }).click();
+  if (measureNavigation) {
+    await beginHqNavigationMetrics(page);
+  }
   await page
     .getByRole("link", { name: "Paper Planet HQ", exact: true })
     .click();
@@ -190,6 +305,27 @@ async function waitForRoomVideoSource(
   );
 }
 
+async function setSyntheticPageVisibility(page: Page, hidden: boolean) {
+  await page.evaluate((nextHidden) => {
+    Object.defineProperties(document, {
+      hidden: {
+        configurable: true,
+        get: () => nextHidden,
+      },
+      visibilityState: {
+        configurable: true,
+        get: () => (nextHidden ? "hidden" : "visible"),
+      },
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    if (!nextHidden) {
+      Reflect.deleteProperty(document, "hidden");
+      Reflect.deleteProperty(document, "visibilityState");
+    }
+  }, hidden);
+}
+
 function mediaAdvanced(before: MediaState, after: MediaState) {
   const videoAdvanced =
     after.video.src !== before.video.src ||
@@ -203,14 +339,29 @@ function mediaAdvanced(before: MediaState, after: MediaState) {
   return { playlistAdvanced, videoAdvanced };
 }
 
+function circularTimeDistance(
+  left: number,
+  right: number,
+  duration: number,
+) {
+  const directDistance = Math.abs(left - right);
+
+  return Math.min(directDistance, duration - directDistance);
+}
+
 test("HQ transition is bounded and both audio streams advance", async ({
   page,
 }, testInfo) => {
-  const startedAt = Date.now();
+  await openHqWithDualAudio(page, true);
 
-  await openHqWithDualAudio(page);
+  const navigationMetrics = await readHqNavigationMetrics(page);
 
-  const transitionMs = Date.now() - startedAt;
+  if (process.env.REPORT_MEDIA_METRICS === "1") {
+    console.log(
+      `[${testInfo.project.name}] HQ navigation ${JSON.stringify(navigationMetrics)}`,
+    );
+  }
+
   const before = await readMediaState(page);
 
   await page.waitForTimeout(2_500);
@@ -218,14 +369,16 @@ test("HQ transition is bounded and both audio streams advance", async ({
   const after = await readMediaState(page);
   const advanced = mediaAdvanced(before, after);
 
-  expect(transitionMs).toBeLessThan(8_000);
+  expect(navigationMetrics.elementMs).toBeLessThan(500);
+  expect(navigationMetrics.firstFrameMs).toBeLessThan(3_000);
+  expect(navigationMetrics.overlayMs).toBeLessThan(3_000);
   expect(before.video.volume).toBeCloseTo(0.8, 2);
   expect(before.playlist.volume).toBeCloseTo(0.71, 2);
   expect(advanced.videoAdvanced).toBe(true);
   expect(advanced.playlistAdvanced).toBe(true);
 
   await testInfo.attach("media-state.json", {
-    body: JSON.stringify({ transitionMs, before, after }, null, 2),
+    body: JSON.stringify({ navigationMetrics, before, after }, null, 2),
     contentType: "application/json",
   });
 });
@@ -265,6 +418,9 @@ test("video and playlist recover independently", async ({ page }) => {
   });
   await waitForHealthyDualAudio(page);
 
+  const beforeVideoSourceFailure = await readMediaState(page);
+  const videoSourceFailureStartedAt = Date.now();
+
   await page
     .locator('video[aria-label="Paper Planet HQ room video"]')
     .evaluate((video: HTMLVideoElement) => {
@@ -274,9 +430,20 @@ test("video and playlist recover independently", async ({ page }) => {
   await waitForHealthyDualAudio(page);
 
   const finalState = await readMediaState(page);
+  const expectedVideoTime =
+    (beforeVideoSourceFailure.video.currentTime +
+      (Date.now() - videoSourceFailureStartedAt) / 1_000) %
+    HQ_VIDEO_DURATION_SECONDS;
 
   expect(finalState.video.src).toContain("/rooms/hq-desktop.mp4");
   expect(finalState.playlist.src).toContain("/audio/normalized/hq/");
+  expect(
+    circularTimeDistance(
+      finalState.video.currentTime,
+      expectedVideoTime,
+      HQ_VIDEO_DURATION_SECONDS,
+    ),
+  ).toBeLessThan(3);
 });
 
 test("offline return recovers both streams", async ({ context, page }) => {
@@ -292,6 +459,45 @@ test("offline return recovers both streams", async ({ context, page }) => {
   await context.setOffline(false);
   await page.bringToFront();
   await waitForHealthyDualAudio(page, 10_000);
+});
+
+test("visibility return recovers both streams", async ({ page }) => {
+  await openHqWithDualAudio(page);
+  await setSyntheticPageVisibility(page, true);
+  await page.evaluate(() => {
+    document.querySelector<HTMLVideoElement>(
+      'video[aria-label="Paper Planet HQ room video"]',
+    )?.pause();
+    document.querySelector<HTMLAudioElement>("audio")?.pause();
+  });
+  await page.waitForTimeout(2_000);
+  await setSyntheticPageVisibility(page, false);
+  await waitForHealthyDualAudio(page, 10_000);
+});
+
+test("Chromium frozen lifecycle restores dual playback", async ({
+  browserName,
+  context,
+  page,
+}) => {
+  test.skip(browserName !== "chromium", "Chromium DevTools lifecycle only.");
+
+  await openHqWithDualAudio(page);
+  const before = await readMediaState(page);
+  const devtools = await context.newCDPSession(page);
+
+  await devtools.send("Page.setWebLifecycleState", { state: "frozen" });
+  await page.waitForTimeout(3_000);
+  await devtools.send("Page.setWebLifecycleState", { state: "active" });
+  await page.bringToFront();
+  await waitForHealthyDualAudio(page, 10_000);
+  await page.waitForTimeout(750);
+
+  const after = await readMediaState(page);
+  const advanced = mediaAdvanced(before, after);
+
+  expect(advanced.videoAdvanced).toBe(true);
+  expect(advanced.playlistAdvanced).toBe(true);
 });
 
 test("room cycling never leaves playlist audio in the wrong room", async ({
@@ -359,31 +565,51 @@ test("playlist track boundaries preserve dual playback", async ({ page }) => {
   await openHqWithDualAudio(page);
   const before = await readMediaState(page);
 
-  const startingSource = await page.locator("audio").evaluate(
-    (audio: HTMLAudioElement) => {
-      if (!Number.isFinite(audio.duration) || audio.duration <= 0.5) {
-        throw new Error("Playlist duration was not ready.");
-      }
+  await page.locator("audio").evaluate((audio: HTMLAudioElement) => {
+    const targetWindow = window as typeof window & {
+      __playlistBoundaryEvents?: { ended: number; playing: number };
+    };
 
-      const source = audio.currentSrc;
-      audio.currentTime = audio.duration - 0.2;
-      return source;
-    },
-  );
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0.5) {
+      throw new Error("Playlist duration was not ready.");
+    }
+
+    targetWindow.__playlistBoundaryEvents = { ended: 0, playing: 0 };
+    audio.addEventListener("ended", () => {
+      if (targetWindow.__playlistBoundaryEvents) {
+        targetWindow.__playlistBoundaryEvents.ended += 1;
+      }
+    });
+    audio.addEventListener("playing", () => {
+      const events = targetWindow.__playlistBoundaryEvents;
+
+      if (events && events.ended > 0) {
+        events.playing += 1;
+      }
+    });
+    audio.currentTime = audio.duration - 0.2;
+  });
 
   await page.waitForFunction(
-    (previousSource) => {
+    () => {
       const audio = document.querySelector<HTMLAudioElement>("audio");
+      const events = (
+        window as typeof window & {
+          __playlistBoundaryEvents?: { ended: number; playing: number };
+        }
+      ).__playlistBoundaryEvents;
 
       return Boolean(
         audio &&
-          audio.currentSrc !== previousSource &&
+          events &&
+          events.ended > 0 &&
+          events.playing > 0 &&
           !audio.paused &&
           !audio.muted &&
           audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
       );
     },
-    startingSource,
+    undefined,
     { timeout: 10_000 },
   );
   await waitForHealthyDualAudio(page);
@@ -391,8 +617,50 @@ test("playlist track boundaries preserve dual playback", async ({ page }) => {
 
   const after = await readMediaState(page);
 
-  expect(after.playlist.src).not.toBe(startingSource);
+  expect(after.playlist.src).toContain("/audio/normalized/hq/");
   expect(mediaAdvanced(before, after).videoAdvanced).toBe(true);
+});
+
+test("playing playlist corrects synchronized clock drift", async ({ page }) => {
+  await openHqWithDualAudio(page);
+  const before = await readMediaState(page);
+
+  await page.locator("audio").evaluate((audio: HTMLAudioElement) => {
+    const targetWindow = window as typeof window & {
+      __playlistSeekedCount?: number;
+    };
+    const upperBound = Math.max(audio.duration - 0.5, 0);
+    const targetTime =
+      audio.currentTime < upperBound / 2 ? upperBound * 0.75 : upperBound * 0.25;
+
+    targetWindow.__playlistSeekedCount = 0;
+    audio.addEventListener("seeked", () => {
+      targetWindow.__playlistSeekedCount =
+        (targetWindow.__playlistSeekedCount ?? 0) + 1;
+    });
+    audio.currentTime = targetTime;
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __playlistSeekedCount?: number;
+            }
+          ).__playlistSeekedCount ?? 0,
+      ),
+    )
+    .toBeGreaterThanOrEqual(2);
+  await waitForHealthyDualAudio(page);
+  await page.waitForTimeout(750);
+
+  const after = await readMediaState(page);
+
+  expect(mediaAdvanced(before, after).videoAdvanced).toBe(true);
+  expect(after.playlist.muted).toBe(false);
+  expect(after.playlist.paused).toBe(false);
 });
 
 test("latest rapid room navigation owns both media streams", async ({ page }) => {
@@ -496,6 +764,18 @@ test("runtime manifest outage falls back to static room media", async ({
   ).toHaveAttribute("src", /hq-desktop\.mp4/);
 });
 
+test("production hotspot links remain keyboard navigable", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Enter Paper Planet" }).click();
+
+  const hqLink = page.getByRole("link", { name: "go to hq" });
+
+  await hqLink.focus();
+  await expect(hqLink).toBeFocused();
+  await hqLink.press("Enter");
+  await waitForRoomVideo(page, "Paper Planet HQ");
+});
+
 test("@soak dual audio remains healthy for twenty minutes", async ({
   context,
   page,
@@ -520,12 +800,15 @@ test("@soak dual audio remains healthy for twenty minutes", async ({
 
     if (!backgroundChecked && elapsed >= soakDurationMs * 0.25) {
       backgroundChecked = true;
-      const backgroundPage = await context.newPage();
-
-      await backgroundPage.goto("about:blank");
-      await backgroundPage.waitForTimeout(Math.min(3_000, sampleIntervalMs));
-      await backgroundPage.close();
-      await page.bringToFront();
+      await setSyntheticPageVisibility(page, true);
+      await page.evaluate(() => {
+        document.querySelector<HTMLVideoElement>(
+          'video[aria-label="Paper Planet HQ room video"]',
+        )?.pause();
+        document.querySelector<HTMLAudioElement>("audio")?.pause();
+      });
+      await page.waitForTimeout(Math.min(3_000, sampleIntervalMs));
+      await setSyntheticPageVisibility(page, false);
       await waitForHealthyDualAudio(page, 10_000);
     }
 

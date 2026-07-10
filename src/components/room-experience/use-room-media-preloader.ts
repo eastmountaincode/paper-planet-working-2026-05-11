@@ -12,6 +12,7 @@ type PreloadedVideo = {
 };
 
 const MAX_PRELOADED_ROOM_VIDEOS = 2;
+const VIDEO_PRELOAD_INTENT_DELAY_MS = 80;
 
 function releaseVideo(video: HTMLVideoElement) {
   video.pause();
@@ -21,11 +22,18 @@ function releaseVideo(video: HTMLVideoElement) {
 
 export function useRoomMediaPreloader() {
   const preloadedVideosRef = useRef(new Map<string, PreloadedVideo>());
+  const pendingPreloadTimersRef = useRef(new Map<string, number>());
 
   const consumeSceneVideo = useCallback((scene: Scene) => {
     const viewport = getPreferredSceneViewport();
     const key = getSceneVideoPreloadKey(scene, viewport);
+    const pendingTimer = pendingPreloadTimersRef.current.get(key);
     const existing = preloadedVideosRef.current.get(key);
+
+    if (pendingTimer !== undefined) {
+      window.clearTimeout(pendingTimer);
+      pendingPreloadTimersRef.current.delete(key);
+    }
 
     if (!existing) {
       return;
@@ -49,75 +57,97 @@ export function useRoomMediaPreloader() {
       return;
     }
 
-    const video = document.createElement("video");
-    const entry: PreloadedVideo = {
-      element: video,
-      lastUsedAt: performance.now(),
-    };
-    let frameRequested = false;
-
-    const pauseAfterFrame = () => {
-      if (frameRequested) {
-        return;
-      }
-
-      frameRequested = true;
-
-      const videoWithFrameCallback = video as HTMLVideoElement & {
-        requestVideoFrameCallback?: (callback: () => void) => number;
-      };
-
-      if (typeof videoWithFrameCallback.requestVideoFrameCallback === "function") {
-        videoWithFrameCallback.requestVideoFrameCallback(() => video.pause());
-        return;
-      }
-
-      window.requestAnimationFrame(() => video.pause());
-    };
-
-    const warmSyncedFrame = () => {
-      const targetTime = getSceneSyncedVideoTime(scene);
-
-      if (
-        Number.isFinite(targetTime) &&
-        Math.abs(video.currentTime - targetTime) > 0.5
-      ) {
-        video.currentTime = targetTime;
-      }
-
-      void video.play().then(pauseAfterFrame).catch(() => undefined);
-    };
-
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
-    video.src = source.src;
-    video.addEventListener("loadedmetadata", warmSyncedFrame, { once: true });
-    video.addEventListener("canplay", pauseAfterFrame, { once: true });
-
-    preloadedVideosRef.current.set(key, entry);
-    video.load();
-
-    if (preloadedVideosRef.current.size <= MAX_PRELOADED_ROOM_VIDEOS) {
+    if (pendingPreloadTimersRef.current.has(key)) {
       return;
     }
 
-    const oldest = [...preloadedVideosRef.current.entries()]
-      .filter(([candidateKey]) => candidateKey !== key)
-      .sort(([, left], [, right]) => left.lastUsedAt - right.lastUsedAt)[0];
+    const timer = window.setTimeout(() => {
+      pendingPreloadTimersRef.current.delete(key);
 
-    if (oldest) {
-      releaseVideo(oldest[1].element);
-      preloadedVideosRef.current.delete(oldest[0]);
-    }
+      if (preloadedVideosRef.current.has(key)) {
+        return;
+      }
+
+      const video = document.createElement("video");
+      const entry: PreloadedVideo = {
+        element: video,
+        lastUsedAt: performance.now(),
+      };
+      let frameRequested = false;
+
+      const pauseAfterFrame = () => {
+        if (frameRequested) {
+          return;
+        }
+
+        frameRequested = true;
+
+        const videoWithFrameCallback = video as HTMLVideoElement & {
+          requestVideoFrameCallback?: (callback: () => void) => number;
+        };
+
+        if (
+          typeof videoWithFrameCallback.requestVideoFrameCallback === "function"
+        ) {
+          videoWithFrameCallback.requestVideoFrameCallback(() => video.pause());
+          return;
+        }
+
+        window.requestAnimationFrame(() => video.pause());
+      };
+
+      const warmSyncedFrame = () => {
+        const targetTime = getSceneSyncedVideoTime(scene);
+
+        if (
+          Number.isFinite(targetTime) &&
+          Math.abs(video.currentTime - targetTime) > 0.5
+        ) {
+          video.currentTime = targetTime;
+        }
+
+        void video.play().then(pauseAfterFrame).catch(() => undefined);
+      };
+
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = "anonymous";
+      video.src = source.src;
+      video.addEventListener("loadedmetadata", warmSyncedFrame, { once: true });
+      video.addEventListener("canplay", pauseAfterFrame, { once: true });
+
+      preloadedVideosRef.current.set(key, entry);
+      video.load();
+
+      if (preloadedVideosRef.current.size <= MAX_PRELOADED_ROOM_VIDEOS) {
+        return;
+      }
+
+      const oldest = [...preloadedVideosRef.current.entries()]
+        .filter(([candidateKey]) => candidateKey !== key)
+        .sort(([, left], [, right]) => left.lastUsedAt - right.lastUsedAt)[0];
+
+      if (oldest) {
+        releaseVideo(oldest[1].element);
+        preloadedVideosRef.current.delete(oldest[0]);
+      }
+    }, VIDEO_PRELOAD_INTENT_DELAY_MS);
+
+    pendingPreloadTimersRef.current.set(key, timer);
   }, []);
 
   useEffect(
     () => () => {
+      for (const timer of pendingPreloadTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+
       for (const { element } of preloadedVideosRef.current.values()) {
         releaseVideo(element);
       }
 
+      pendingPreloadTimersRef.current.clear();
       preloadedVideosRef.current.clear();
     },
     [],

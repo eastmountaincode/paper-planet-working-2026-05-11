@@ -8,6 +8,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 let r2Client: S3Client | null = null;
 
+const R2_CONNECTION_TIMEOUT_MS = 3_000;
+const R2_REQUEST_TIMEOUT_MS = 8_000;
+const R2_READ_TIMEOUT_MS = 5_000;
+
 function requireEnv(name: string) {
   const value = process.env[name];
 
@@ -27,6 +31,13 @@ function getR2Client() {
     r2Client = new S3Client({
       region: "auto",
       endpoint: requireEnv("R2_ENDPOINT"),
+      maxAttempts: 2,
+      requestHandler: {
+        connectionTimeout: R2_CONNECTION_TIMEOUT_MS,
+        requestTimeout: R2_REQUEST_TIMEOUT_MS,
+        socketTimeout: R2_REQUEST_TIMEOUT_MS,
+        throwOnRequestTimeout: true,
+      },
       credentials: {
         accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
         secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
@@ -65,6 +76,7 @@ export async function getR2TextObject(key: string) {
       Bucket: getR2BucketName(),
       Key: key,
     }),
+    { abortSignal: AbortSignal.timeout(R2_READ_TIMEOUT_MS) },
   );
 
   return streamToString(response.Body);

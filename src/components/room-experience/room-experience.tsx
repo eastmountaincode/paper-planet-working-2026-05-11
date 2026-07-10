@@ -18,10 +18,7 @@ import {
   clampSafeSquareRatio,
   DEFAULT_SAFE_SQUARE_SHORT_SIDE_RATIO,
 } from "./safe-square";
-import type {
-  PointerPosition,
-  RoomExperienceProps,
-} from "./types";
+import type { PointerPosition } from "./types";
 import { useDevPanelAccess } from "./use-dev-panel-access";
 import { useLoadingPreview } from "./use-loading-preview";
 import { useRoomMediaPreloader } from "./use-room-media-preloader";
@@ -38,11 +35,13 @@ import {
   devOutline,
 } from "./ui";
 
-export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
+export function RoomExperience() {
+  const initialScene = staticScenes.construction;
   const [runtimeScenes, setRuntimeScenes] = useState(staticScenes);
   const [scene, setActiveScene] = useState(initialScene);
   const searchParams = useSearchParams();
   const {
+    getPlaylistStatusSnapshot,
     hasEntered,
     markEntered,
     playRoomPlaylistTrack,
@@ -113,9 +112,9 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     setPlaylistTrackIndex,
   } = useScenePlaylistController({
     audioTransitionMuted,
+    getPlaylistStatusSnapshot,
     hasEntered,
     playRoomPlaylistTrack,
-    playlistStatus,
     primeRoomPlaylistTrack,
     resumeRoomPlaylistAudio,
     runtimeScenes,
@@ -143,6 +142,7 @@ export function RoomExperience({ scene: initialScene }: RoomExperienceProps) {
     visibleSceneViewport,
   } = useRoomVideoController({
     audioTransitionMuted,
+    debugStatusEnabled: helperShortcutEnabled && devPanelOpen,
     fadeOutInProgressRef,
     resumeActivePlaylistAudio,
     scene,

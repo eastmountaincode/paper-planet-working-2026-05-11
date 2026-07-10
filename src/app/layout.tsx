@@ -4,7 +4,6 @@ import { Analytics } from "@vercel/analytics/react";
 import { EntryProvider } from "@/components/entry-provider";
 import { MediaResourceHints } from "@/components/media-resource-hints";
 import "./globals.css";
-import "@xyflow/react/dist/style.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

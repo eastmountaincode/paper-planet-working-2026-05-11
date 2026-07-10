@@ -78,6 +78,98 @@ Production-server result:
 - Cold local R2-backed request: 220.8 ms in the measured sample.
 - Four following requests: 2.8-3.7 ms each.
 
+## Iteration 4: align media preconnect and enforce navigation timing
+
+All R2 media elements now use anonymous CORS, matching the media-origin
+preconnect. This prevents the hint from warming a different credentials-mode
+pool than the video and playlist requests. Cloudflare CORS exposes byte-range
+headers for the configured app origins.
+
+The Playwright regression captures destination element mount, metadata,
+decoded frame, and loading-veil release from the in-page click timestamp. In a
+concurrent production-build run:
+
+- Chrome: element 23.5 ms, metadata 765.7 ms, first frame 970.2 ms, reveal
+  973.1 ms.
+- Firefox: element 38 ms, metadata 489 ms, first frame 521 ms, reveal 821 ms.
+- WebKit: element 142 ms, metadata 469 ms, first frame 730 ms, reveal 841 ms.
+
+The suite now fails if destination mount exceeds 500 ms or if first frame / veil
+release exceed three seconds.
+
+## Iteration 5: remove duplicate startup payloads
+
+The server passed the entire construction scene to a client component that
+already imports the same static fallback. The RSC HTML therefore serialized the
+playlist and media metadata twice.
+
+Result: production root HTML dropped from 42.3 KB to 9.15 KB. React Flow remains
+admin-only, and the public production CSS remains 43 KB after its separate 15 KB
+admin stylesheet split.
+
+The combined runtime manifest response is 91.90 KB identity and 19.98 KB when
+sampled through gzip (-78%). The local `next start` server did not compress the
+dynamic route, but the live Vercel deployment was verified to negotiate both
+gzip and Brotli for the existing public manifest endpoints.
+
+Decision: rely on Vercel's platform compression in deployment. A manual gzip
+implementation was rejected because it would add function CPU and prevent the
+platform from choosing Brotli without reducing deployed transfer size.
+
+## Reliability iteration: bounded R2 fallback
+
+The S3/R2 client previously had no connection, request, socket, or total read
+timeout. A stalled object request could therefore prevent the static fallback
+from ever running.
+
+Implementation:
+
+- 3-second connection timeout.
+- 8-second request and idle-socket timeout, with timeout errors enabled.
+- Two SDK attempts maximum.
+- Hard five-second abort for manifest reads.
+
+Verification: with the R2 endpoint replaced by an unreachable address, the
+public hotspot API returned HTTP 200 with the static four-room manifest in
+5.024 seconds.
+
+## Reliability iteration: synchronized clock drift
+
+Playlist health now compares the current source, track index, and current time
+to the global synchronized position every two seconds. A stream that still says
+`playing` but falls more than 2.5 seconds behind is corrected without waiting
+for a pause or media error. Unmuting a synchronized playlist also computes a
+fresh global position instead of seeking back to stale React state.
+
+The provider no longer updates playlist status state every second solely to
+sample native `currentTime`, and video diagnostics sample only while the debug
+panel is open. A normal 20-minute room visit therefore avoids roughly 2,400
+timer-driven full-tree render requests while watchdogs continue reading live
+native media snapshots.
+
+Production Chrome profiling captured no React renders during six seconds of
+steady HQ dual playback. A forced-GC navigation audit remained stable across 80
+rapid room transitions:
+
+- Documents: 1 throughout.
+- DOM nodes: 504 after 40 transitions and 504 after 80.
+- JavaScript event listeners: 414 after 40 and 414 after 80.
+- Used heap: 5.52 MB after 40 and 5.64 MB after 80 (about 0.12 MB additional
+  after the second 40-transition block).
+
+## Iteration 6: avoid instant-intent duplicate pipelines
+
+Video intent preloading now waits 80 ms. A quick click cancels the pending
+preloader before it creates a media element; a sustained hover/focus still
+warms the synchronized frame. Primed playlist audio is likewise released before
+the shared playback element starts the same source.
+
+The remaining two instant-click HQ video requests are the expected browser
+sequence: `bytes=0-` for MP4 metadata followed by a range near the synchronized
+timestamp. In a paired fresh Chrome sample, no-hover readiness was 519.4 ms and
+a 250 ms hover reduced it to 286.4 ms, with one steady-state video element in
+both cases.
+
 ## Rejected experiment: shorter MP4 keyframe intervals
 
 The published HQ H.264 files have a 10.417-second fixed keyframe interval.
@@ -153,10 +245,25 @@ Results:
 - Playwright Firefox: 20-minute dual-audio soak passed.
 - Playwright WebKit: 20-minute dual-audio soak passed.
 - All three ran concurrently with five-second health samples.
-- All three passed background/foreground return at 25% elapsed time.
 - All three passed offline pause plus online recovery at 50% elapsed time.
 - All three passed simultaneous invalid video and playlist source restoration at 75% elapsed time.
 - Final result: 3 passed in 20.3 minutes.
+- A second latest-production-build run passed 3/3 in 20.1 minutes with the same
+  continuous sampling, offline recovery, and simultaneous broken-source
+  restoration.
+
+Headless Chrome, Firefox, and WebKit all keep `document.visibilityState` as
+`visible` when another headless page is opened, so that action is not counted as
+real background coverage. A standards-level synthetic hidden/visible test that
+pauses both streams and requires recovery on `visibilitychange` passes in all
+three engines. The corrected production-build soak passed 3/3 in 20.2 minutes
+with explicit visibility recovery at 25%, offline recovery at 50%, simultaneous
+broken-source restoration at 75%, and continuous five-second sampling.
+
+The final quick production matrix reports 37 passed and 2 expected skips. The
+skips are the Chromium-only DevTools lifecycle case in Firefox and WebKit;
+Chrome passed an actual three-second frozen-page lifecycle and recovered both
+streams.
 
 Native Safari WebDriver was attempted, but macOS reported that Safari's **Allow remote automation** setting is disabled. WebKit coverage is therefore automated; native Safari remains an explicit manual verification boundary.
 
@@ -224,3 +331,11 @@ recovery, offline return, and room cycling.
   rooms without horizontal page overflow.
 - Non-interactive graph elements are removed from keyboard focus, and the admin
   tabs implement roving focus with Left/Right/Home/End navigation.
+- React Flow JavaScript remains isolated to the admin route. Its 15 KB
+  production stylesheet was moved to an admin-only nested layout, reducing the
+  public room CSS payload from 58 KB to 43 KB while preserving the graph render.
+- The overview reports hotspot, playlist, and settings sources independently
+  (`3/3 R2` or partial fallback) instead of inferring all three from hotspots.
+- Production room hotspots remain keyboard/screen-reader links when debug
+  outlines are hidden, and the entry artwork exposes one keyboard action rather
+  than three duplicate buttons.

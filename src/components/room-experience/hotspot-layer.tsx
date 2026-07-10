@@ -36,7 +36,6 @@ export function HotspotLayer({
       )}
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      aria-hidden={!debugHotspots}
     >
       {hotspots.map((hotspot) => {
         const action = hotspot.action;

@@ -53,6 +53,7 @@ const VIDEO_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
 
 type UseRoomVideoControllerOptions = {
   audioTransitionMuted: boolean;
+  debugStatusEnabled: boolean;
   fadeOutInProgressRef: { current: boolean };
   resumeActivePlaylistAudio: () => void;
   scene: Scene;
@@ -87,6 +88,7 @@ function createVideoHealthWatch(key = ""): VideoHealthWatch {
 
 export function useRoomVideoController({
   audioTransitionMuted,
+  debugStatusEnabled,
   fadeOutInProgressRef,
   resumeActivePlaylistAudio,
   scene,
@@ -856,6 +858,10 @@ export function useRoomVideoController({
   ]);
 
   useEffect(() => {
+    if (!debugStatusEnabled) {
+      return undefined;
+    }
+
     const updateVideoElementStatus = () => {
       const video = getVisibleVideoElement();
 
@@ -886,6 +892,7 @@ export function useRoomVideoController({
       window.clearInterval(interval);
     };
   }, [
+    debugStatusEnabled,
     getVisibleVideoElement,
     resolvedSceneViewport,
     scene.slug,

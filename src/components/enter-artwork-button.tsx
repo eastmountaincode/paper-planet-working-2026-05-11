@@ -114,15 +114,15 @@ export function EnterArtworkButton({
         preserveAspectRatio="none"
         aria-label="Enter Paper Planet"
       >
-        {enterHotspots.map((hotspot) => (
+        {enterHotspots.map((hotspot, index) => (
           <polygon
             key={hotspot.id}
             points={pointsToString(getHotspotPoints(hotspot))}
             fill="transparent"
             pointerEvents="all"
-            role="button"
-            tabIndex={0}
-            aria-label={hotspot.label}
+            role={index === 0 ? "button" : undefined}
+            tabIndex={index === 0 ? 0 : undefined}
+            aria-label={index === 0 ? hotspot.label : undefined}
             className="cursor-pointer outline-none focus-visible:stroke-white"
             stroke="transparent"
             strokeWidth="0.45"

@@ -41,6 +41,7 @@ type PlaylistRecoveryWatch = {
 
 const PLAYLIST_HEALTH_CHECK_MS = 2_000;
 const PLAYLIST_STALL_THRESHOLD_MS = 5_000;
+const PLAYLIST_SYNC_TOLERANCE_SECONDS = 2.5;
 const PLAYLIST_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
 
 function createPlaylistRecoveryWatch(key = ""): PlaylistRecoveryWatch {
@@ -55,9 +56,9 @@ function createPlaylistRecoveryWatch(key = ""): PlaylistRecoveryWatch {
 
 type UseScenePlaylistControllerOptions = {
   audioTransitionMuted: boolean;
+  getPlaylistStatusSnapshot: () => PlaylistStatus;
   hasEntered: boolean;
   playRoomPlaylistTrack: PlayRoomPlaylistTrack;
-  playlistStatus: PlaylistStatus;
   primeRoomPlaylistTrack: (room: SceneSlug, src: string) => void;
   resumeRoomPlaylistAudio: (
     room: SceneSlug,
@@ -78,9 +79,9 @@ type UseScenePlaylistControllerOptions = {
 
 export function useScenePlaylistController({
   audioTransitionMuted,
+  getPlaylistStatusSnapshot,
   hasEntered,
   playRoomPlaylistTrack,
-  playlistStatus,
   primeRoomPlaylistTrack,
   resumeRoomPlaylistAudio,
   runtimeScenes,
@@ -94,7 +95,6 @@ export function useScenePlaylistController({
   const [playlistTrackIndex, setPlaylistTrackIndex] = useState(0);
   const [playlistStartTime, setPlaylistStartTime] = useState(0);
   const playlistAudioActiveRef = useRef(false);
-  const playlistStatusRef = useRef(playlistStatus);
   const playlistRecoveryRef = useRef<PlaylistRecoveryWatch | null>(null);
 
   const playlistEnabled = scene.playlist?.enabled ?? false;
@@ -116,10 +116,6 @@ export function useScenePlaylistController({
   useEffect(() => {
     playlistAudioActiveRef.current = playlistAudioActive;
   }, [playlistAudioActive]);
-
-  useEffect(() => {
-    playlistStatusRef.current = playlistStatus;
-  }, [playlistStatus]);
 
   const getSyncedPlaylistPosition = useCallback(
     (): SyncedPlaylistPosition | null => {
@@ -178,7 +174,7 @@ export function useScenePlaylistController({
         return;
       }
 
-      const status = playlistStatusRef.current;
+      const status = getPlaylistStatusSnapshot();
       const now = performance.now();
       let watch = playlistRecoveryRef.current;
 
@@ -191,8 +187,23 @@ export function useScenePlaylistController({
       const progressed =
         status.currentTime > watch.lastObservedTime + 0.05 ||
         status.currentTime < watch.lastObservedTime - 0.5;
+      const position = getSyncedPlaylistPosition();
+      const targetTrack = position
+        ? playlistTracks[position.trackIndex]
+        : activePlaylistTrack;
+      const absoluteTargetSource = targetTrack
+        ? new URL(targetTrack.src, window.location.href).href
+        : "";
+      const playbackIsOutOfSync = Boolean(
+        position &&
+          targetTrack &&
+          (position.trackIndex !== playlistTrackIndex ||
+            status.currentSrc !== absoluteTargetSource ||
+            Math.abs(status.currentTime - position.currentTime) >
+              PLAYLIST_SYNC_TOLERANCE_SECONDS),
+      );
 
-      if (progressed) {
+      if (progressed && !playbackIsOutOfSync) {
         watch.attempts = 0;
         watch.lastProgressAt = now;
         watch.lastObservedTime = status.currentTime;
@@ -202,6 +213,7 @@ export function useScenePlaylistController({
       watch.lastObservedTime = status.currentTime;
 
       const explicitlyUnhealthy =
+        playbackIsOutOfSync ||
         Boolean(status.error) ||
         status.paused ||
         status.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
@@ -225,11 +237,6 @@ export function useScenePlaylistController({
 
       watch.attempts += 1;
       watch.lastAttemptAt = now;
-
-      const position = getSyncedPlaylistPosition();
-      const targetTrack = position
-        ? playlistTracks[position.trackIndex]
-        : activePlaylistTrack;
 
       if (!targetTrack) {
         return;
@@ -285,12 +292,13 @@ export function useScenePlaylistController({
   }, [
     activePlaylistTrack,
     getSyncedPlaylistPosition,
+    getPlaylistStatusSnapshot,
     playRoomPlaylistTrack,
     playlistAudioActive,
     playlistTracks,
+    playlistTrackIndex,
     playlistVolume,
     scene.slug,
-    setActivePlaylistRoom,
     setAudioError,
   ]);
 
@@ -411,13 +419,16 @@ export function useScenePlaylistController({
         return;
       }
 
-      const status = playlistStatusRef.current;
-      const activePlaybackIsHealthy =
+      const status = getPlaylistStatusSnapshot();
+      const activePlaybackIsSynced =
         playlistAudioActiveRef.current &&
         !status.paused &&
-        status.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+        status.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        position.trackIndex === playlistTrackIndex &&
+        Math.abs(status.currentTime - position.currentTime) <=
+          PLAYLIST_SYNC_TOLERANCE_SECONDS;
 
-      if (activePlaybackIsHealthy) {
+      if (activePlaybackIsSynced) {
         return;
       }
 
@@ -433,7 +444,9 @@ export function useScenePlaylistController({
     };
   }, [
     getSyncedPlaylistPosition,
+    getPlaylistStatusSnapshot,
     playlistEnabled,
+    playlistTrackIndex,
     playlistTracks.length,
   ]);
 
@@ -442,11 +455,24 @@ export function useScenePlaylistController({
       return;
     }
 
-    const playCurrentTrack = () =>
-      playRoomPlaylistTrack({
+    const playCurrentTrack = () => {
+      const position = getSyncedPlaylistPosition();
+      const playbackTrack = position
+        ? playlistTracks[position.trackIndex]
+        : activePlaylistTrack;
+
+      if (!playbackTrack) {
+        return Promise.resolve();
+      }
+
+      if (position && position.trackIndex !== playlistTrackIndex) {
+        setPlaylistTrackIndex(position.trackIndex);
+      }
+
+      return playRoomPlaylistTrack({
         room: scene.slug,
-        src: activePlaylistTrack.src,
-        startTime: playlistStartTime,
+        src: playbackTrack.src,
+        startTime: position?.currentTime ?? playlistStartTime,
         volume: playlistVolume,
         onEnded: () => {
           setPlaylistTrackIndex(
@@ -455,6 +481,7 @@ export function useScenePlaylistController({
           setPlaylistStartTime(0);
         },
       });
+    };
 
     void playCurrentTrack().catch((error: unknown) => {
       if (isExpectedMediaInterruption(error)) {
@@ -467,10 +494,12 @@ export function useScenePlaylistController({
     return undefined;
   }, [
     activePlaylistTrack,
+    getSyncedPlaylistPosition,
     playRoomPlaylistTrack,
     playlistAudioActive,
     playlistStartTime,
-    playlistTracks.length,
+    playlistTrackIndex,
+    playlistTracks,
     playlistVolume,
     scene.slug,
     setAudioError,

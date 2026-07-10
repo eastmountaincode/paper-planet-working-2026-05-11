@@ -1,9 +1,5 @@
 import type { Scene } from "@/lib/scenes";
 
-export type RoomExperienceProps = {
-  scene: Scene;
-};
-
 export type PointerPosition = {
   x: number;
   y: number;
