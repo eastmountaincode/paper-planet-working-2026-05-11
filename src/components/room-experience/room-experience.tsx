@@ -132,6 +132,7 @@ export function RoomExperience() {
     playVisibleVideoOnEnter,
     recordVisibleVideoTime,
     resetVideoForSceneSwitch,
+    retainedSceneViewport,
     resolvedSceneViewport,
     sceneViewport,
     setVideoElement,
@@ -299,6 +300,7 @@ export function RoomExperience() {
         onVideoTimeUpdate={recordVisibleVideoTime}
         onVideoVariantReady={handleVariantVideoReady}
         orderedHotspots={orderedHotspots}
+        retainedSceneViewport={retainedSceneViewport}
         resolvedSceneViewport={resolvedSceneViewport}
         safeSquareMetrics={safeSquareMetrics}
         safeSquareVisible={safeSquareVisible}

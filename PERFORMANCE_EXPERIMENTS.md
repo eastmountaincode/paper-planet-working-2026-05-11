@@ -205,6 +205,35 @@ Decision: reject both candidates. CRF 28 does not solve transfer size and CRF
 30 gives up substantially more image fidelity for a modest size reduction. No
 media object or checked-in asset was changed.
 
+## Iteration 8: make viewport handoffs reversible
+
+A desktop to mobile to desktop trace showed the reverse handoff issuing the
+same desktop metadata and synchronized range requests again. Chromium did not
+reuse the partial MP4 response after React discarded the original element; the
+second desktop frame took 15.20 seconds in that sample even though the first
+desktop and mobile frames were fast.
+
+The controller now keeps only the just-replaced viewport element for five
+seconds, paused and muted. A quick orientation bounce promotes that decoded
+element instead of redownloading, while the reserve is removed automatically
+and steady state returns to one element. Only one video is ever playing or
+audible. In the paired production sample, desktop to mobile completed in 273 ms
+and the immediate return to desktop dropped from 15.20 seconds to 81 ms.
+
+Slow synchronized seeks also get a per-element settle window. Once one range
+seek has decoded a valid frame, the controller reveals it instead of repeatedly
+chasing a wall clock that advanced while the seek was in flight; the regular
+sync watchdog corrects residual drift afterward. Five repeated Chrome
+mobile/desktop round trips passed with one playing pipeline and automatic
+reserve cleanup.
+
+Initial video loading now also distinguishes an active post-metadata range
+request from a missing or failed source. The former gets a bounded ten-second
+grace period instead of being restarted at 4.5 seconds, avoiding self-inflicted
+reload loops on slower links. Normal cross-browser checks run one browser at a
+time so CDN timing represents one visitor; the 20-minute soak explicitly keeps
+Chrome, Firefox, and WebKit concurrent for sustained-load coverage.
+
 ## Rejected experiment: shorter MP4 keyframe intervals
 
 The published HQ H.264 files have a 10.417-second fixed keyframe interval.
@@ -259,6 +288,38 @@ Result in Chromium failure injection:
 
 - Unexpected visible-video pause: resumed in about 0.53 seconds.
 - Broken visible-video source: expected synchronized room source restored and playing in about 1.54 seconds after one media error.
+
+Later production-suite concurrency exposed Chromium retaining
+`NETWORK_NO_SOURCE` after a transient range failure even though the element's
+URL was already correct. Reload-tier recovery now clears the source and media
+resource state before assigning the expected URL again. Fifteen repeated
+failure-injection runs (five per Chrome, Firefox, and WebKit) each aborted the
+first request for the expected TV-room URL and recovered on the next request.
+
+## Audio reliability iteration 3: preserve the trusted Enter gesture
+
+The playlist provider previously waited for metadata before its first unmuted
+`play()` call. On a slow response that can move the call outside Safari's
+transient user-activation window even though the visitor explicitly pressed
+Enter.
+
+The persistent playlist element now requests playback synchronously in the
+Enter/click call stack. Its volume stays at zero until metadata is ready and
+the global synchronized position has been applied, then the requested mix
+volume is restored. Request IDs are checked again before restoring gain so a
+stale room load cannot make a newer track audible.
+
+The regression test holds every MP3 request before metadata, presses Enter,
+and verifies that the audio element has already received `play()` before any
+request is released. It then releases the requests and verifies synchronized,
+unmuted playback at the configured volume in Chrome, Firefox, and WebKit.
+
+A concurrent production-build run also exposed recovery requests being
+mistaken for clock drift while their correct source was still loading. The
+watchdog now gives an in-flight target source up to ten seconds to reach
+current data before it may reload it. A second cross-browser injection holds
+the restored HQ MP3 for 5.5 seconds and verifies exactly one request, then
+releases it and verifies healthy dual playback.
 
 ## Dual-audio concurrency check
 

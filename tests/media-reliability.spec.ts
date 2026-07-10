@@ -78,7 +78,7 @@ async function readMediaState(page: Page): Promise<MediaState> {
   });
 }
 
-async function waitForHealthyDualAudio(page: Page, timeout = 8_000) {
+async function waitForHealthyDualAudio(page: Page, timeout = 20_000) {
   try {
     await page.waitForFunction(
       () => {
@@ -276,7 +276,7 @@ async function waitForRoomVideo(page: Page, roomTitle: string) {
       );
     },
     roomTitle,
-    { timeout: 10_000 },
+    { timeout: 20_000 },
   );
 }
 
@@ -301,7 +301,7 @@ async function waitForRoomVideoSource(
       );
     },
     { sourceFragment, title: roomTitle },
-    { timeout: 15_000 },
+    { timeout: 20_000 },
   );
 }
 
@@ -422,6 +422,104 @@ test("constrained connections avoid competing detached video preloads", async ({
   expect(hqVideoRequests.length).toBeGreaterThan(0);
 });
 
+test("Enter claims playlist playback before slow metadata arrives", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const targetWindow = window as typeof window & {
+      __playlistPlayCalls?: number;
+    };
+    const originalPlay = HTMLMediaElement.prototype.play;
+
+    targetWindow.__playlistPlayCalls = 0;
+    HTMLMediaElement.prototype.play = function play() {
+      if (this instanceof HTMLAudioElement) {
+        targetWindow.__playlistPlayCalls =
+          (targetWindow.__playlistPlayCalls ?? 0) + 1;
+      }
+
+      return originalPlay.call(this);
+    };
+  });
+
+  await page.route("**/api/runtime", async (route) => {
+    const response = await route.fetch();
+    const result = (await response.json()) as {
+      playlists: {
+        manifest: {
+          rooms: {
+            construction: {
+              tracks: Array<{ enabled: boolean }>;
+            };
+          };
+        };
+      };
+      settings: typeof dualAudioSettings;
+    };
+
+    result.playlists.manifest.rooms.construction.tracks.forEach(
+      (track, index) => {
+        track.enabled = index === 0;
+      },
+    );
+    result.settings.manifest.rooms.construction.playlistVolume = 0.7;
+
+    await route.fulfill({ response, json: result });
+  });
+
+  let releaseAudioRequests = () => undefined;
+  const audioRequestsReleased = new Promise<void>((resolve) => {
+    releaseAudioRequests = resolve;
+  });
+
+  await page.route("**/*.mp3", async (route) => {
+    await audioRequestsReleased;
+    await route.continue();
+  });
+
+  const runtimeLoaded = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/runtime" && response.ok(),
+  );
+
+  await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
+  await runtimeLoaded;
+  await page.waitForTimeout(100);
+  await page.getByRole("button", { name: "Enter", exact: true }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __playlistPlayCalls?: number;
+            }
+          ).__playlistPlayCalls ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
+
+  releaseAudioRequests();
+
+  await page.waitForFunction(
+    () => {
+      const audio = document.querySelector<HTMLAudioElement>("audio");
+
+      return Boolean(
+        audio &&
+          audio.currentSrc.includes("/audio/normalized/construction/") &&
+          !audio.paused &&
+          !audio.muted &&
+          audio.volume === 0.7 &&
+          audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+});
+
 test("video and playlist recover independently", async ({ page }) => {
   await openHqWithDualAudio(page);
 
@@ -483,6 +581,67 @@ test("video and playlist recover independently", async ({ page }) => {
       HQ_VIDEO_DURATION_SECONDS,
     ),
   ).toBeLessThan(3);
+});
+
+test("playlist recovery does not restart its in-flight target request", async ({
+  page,
+}) => {
+  await openHqWithDualAudio(page);
+
+  let releaseRecoveryRequest = () => undefined;
+  const recoveryRequestReleased = new Promise<void>((resolve) => {
+    releaseRecoveryRequest = resolve;
+  });
+  let recoveryRequestCount = 0;
+
+  await page.route(
+    /\/audio\/normalized\/hq\/.*\.mp3(?:\?.*)?$/,
+    async (route) => {
+      recoveryRequestCount += 1;
+      await recoveryRequestReleased;
+      await route.continue();
+    },
+  );
+
+  try {
+    await page.locator("audio").evaluate((audio: HTMLAudioElement) => {
+      audio.src = "/__playlist-in-flight-failure__.mp3";
+      audio.load();
+    });
+
+    await expect
+      .poll(() => recoveryRequestCount, { timeout: 5_000 })
+      .toBe(1);
+    await page.waitForTimeout(5_500);
+    expect(recoveryRequestCount).toBe(1);
+  } finally {
+    releaseRecoveryRequest();
+  }
+
+  await waitForHealthyDualAudio(page, 12_000);
+});
+
+test("video recovers when the expected source has a transient failure", async ({
+  page,
+}) => {
+  await openHqWithDualAudio(page);
+
+  let videoRequestCount = 0;
+  const tvVideoPattern = /\/rooms\/tv-room-desktop\.mp4(?:\?.*)?$/;
+
+  page.on("request", (request) => {
+    if (tvVideoPattern.test(request.url())) {
+      videoRequestCount += 1;
+    }
+  });
+
+  await page.route(tvVideoPattern, (route) => route.abort("failed"), {
+    times: 1,
+  });
+
+  await navigateByRoomTitle(page, "Paper Planet TV Room");
+  await waitForRoomVideo(page, "Paper Planet TV Room");
+  expect(videoRequestCount).toBeGreaterThanOrEqual(2);
 });
 
 test("offline return recovers both streams", async ({ context, page }) => {
@@ -581,7 +740,16 @@ test("viewport handoff keeps one steady-state video pipeline", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await waitForRoomVideoSource(page, "Paper Planet HQ", "hq-mobile.mp4");
   await waitForHealthyDualAudio(page, 10_000);
-  await expect(page.locator("video")).toHaveCount(1);
+  await expect(page.locator("video")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page
+        .locator("video")
+        .evaluateAll((videos: HTMLVideoElement[]) =>
+          videos.filter((video) => !video.paused).length,
+        ),
+    )
+    .toBe(1);
   await expect(
     page.locator('video[aria-label="Paper Planet HQ room video"]'),
   ).toHaveAttribute("src", /hq-mobile\.mp4/);
@@ -594,10 +762,22 @@ test("viewport handoff keeps one steady-state video pipeline", async ({
   await page.setViewportSize({ width: 1280, height: 720 });
   await waitForRoomVideoSource(page, "Paper Planet HQ", "hq-desktop.mp4");
   await waitForHealthyDualAudio(page, 10_000);
-  await expect(page.locator("video")).toHaveCount(1);
+  await expect(page.locator("video")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page
+        .locator("video")
+        .evaluateAll((videos: HTMLVideoElement[]) =>
+          videos.filter((video) => !video.paused).length,
+        ),
+    )
+    .toBe(1);
   await expect(
     page.locator('video[aria-label="Paper Planet HQ room video"]'),
   ).toHaveAttribute("src", /hq-desktop\.mp4/);
+  await expect
+    .poll(() => page.locator("video").count(), { timeout: 7_000 })
+    .toBe(1);
 });
 
 test("playlist track boundaries preserve dual playback", async ({ page }) => {
@@ -690,6 +870,7 @@ test("playing playlist corrects synchronized clock drift", async ({ page }) => {
             }
           ).__playlistSeekedCount ?? 0,
       ),
+      { timeout: 10_000 },
     )
     .toBeGreaterThanOrEqual(2);
   await waitForHealthyDualAudio(page);

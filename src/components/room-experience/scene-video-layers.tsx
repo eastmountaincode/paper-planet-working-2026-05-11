@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Scene, SceneViewport } from "@/lib/scenes";
 import { getSceneVideoSource } from "@/lib/scenes";
 import { classNames, devOutline } from "./ui";
@@ -14,6 +15,7 @@ type SceneVideoLayersProps = {
   ) => void;
   onVariantReady: (viewport: SceneViewport) => void;
   onVisibleTimeUpdate: (timeSeconds: number) => void;
+  retainedSceneViewport: SceneViewport | null;
   resolvedSceneViewport: SceneViewport;
   scene: Scene;
   sceneViewport: SceneViewport | null;
@@ -32,6 +34,7 @@ export function SceneVideoLayers({
   onPlaybackEvent,
   onVariantReady,
   onVisibleTimeUpdate,
+  retainedSceneViewport,
   resolvedSceneViewport,
   scene,
   sceneViewport,
@@ -39,15 +42,29 @@ export function SceneVideoLayers({
   videoAudioActive,
   videoAudioEnabled,
 }: SceneVideoLayersProps) {
+  const videoRefCallbacks = useMemo(
+    () => ({
+      desktop: (element: HTMLVideoElement | null) =>
+        setVideoElement("desktop", element),
+      mobile: (element: HTMLVideoElement | null) =>
+        setVideoElement("mobile", element),
+    }),
+    [setVideoElement],
+  );
+
   if (!sceneViewport) {
     return null;
   }
 
-  // Keep one media pipeline in steady state. During an orientation/viewport
-  // change, retain the currently visible variant only until the preferred
-  // variant has decoded a frame, then SceneVideoLayers naturally drops it.
+  // Keep one playing pipeline in steady state. During an orientation/viewport
+  // change, preserve the replaced element briefly (paused and muted) so a
+  // quick rotation bounce can reuse its decoded range instead of redownloading.
   const mountedViewports = Array.from(
-    new Set<SceneViewport>([resolvedSceneViewport, sceneViewport]),
+    new Set<SceneViewport>(
+      [resolvedSceneViewport, sceneViewport, retainedSceneViewport].filter(
+        (viewport): viewport is SceneViewport => viewport !== null,
+      ),
+    ),
   );
 
   return (
@@ -61,7 +78,7 @@ export function SceneVideoLayers({
         return (
           <video
             key={`${scene.slug}:${viewport}:embedded-audio`}
-            ref={(element) => setVideoElement(viewport, element)}
+            ref={videoRefCallbacks[viewport]}
             className={classNames(
               "absolute inset-0 z-0 h-full w-full bg-transparent",
               containsSimulatedLandscape ? "object-contain" : "object-cover",

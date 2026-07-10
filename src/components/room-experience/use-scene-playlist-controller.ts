@@ -40,6 +40,7 @@ type PlaylistRecoveryWatch = {
 };
 
 const PLAYLIST_HEALTH_CHECK_MS = 2_000;
+const PLAYLIST_LOAD_GRACE_MS = 10_000;
 const PLAYLIST_STALL_THRESHOLD_MS = 5_000;
 const PLAYLIST_SYNC_TOLERANCE_SECONDS = 2.5;
 const PLAYLIST_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
@@ -202,6 +203,13 @@ export function useScenePlaylistController({
             Math.abs(status.currentTime - position.currentTime) >
               PLAYLIST_SYNC_TOLERANCE_SECONDS),
       );
+      const targetSourceIsLoading = Boolean(
+        targetTrack &&
+          status.currentSrc === absoluteTargetSource &&
+          !status.error &&
+          status.networkState === HTMLMediaElement.NETWORK_LOADING &&
+          status.readyState < HTMLMediaElement.HAVE_CURRENT_DATA,
+      );
 
       if (progressed && !playbackIsOutOfSync) {
         watch.attempts = 0;
@@ -211,6 +219,17 @@ export function useScenePlaylistController({
       }
 
       watch.lastObservedTime = status.currentTime;
+
+      // Once recovery has restored the intended source, let that request
+      // reach metadata/current-data before treating its temporary clock
+      // mismatch as another failure. Reloading an in-flight range request is
+      // especially harmful under constrained bandwidth.
+      if (
+        targetSourceIsLoading &&
+        now - watch.lastAttemptAt < PLAYLIST_LOAD_GRACE_MS
+      ) {
+        return;
+      }
 
       const explicitlyUnhealthy =
         playbackIsOutOfSync ||

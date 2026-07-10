@@ -6,7 +6,9 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
-  workers: 3,
+  // Individual browser sessions keep CDN/media timing representative. The
+  // long soak opts back into three-way concurrency through its npm script.
+  workers: process.env.MEDIA_SOAK_PARALLEL === "1" ? 3 : 1,
   reporter: [["line"]],
   use: {
     baseURL: "http://localhost:3000",

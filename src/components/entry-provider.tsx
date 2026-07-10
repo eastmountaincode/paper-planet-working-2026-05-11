@@ -425,7 +425,10 @@ export function EntryProvider({ children }: { children: ReactNode }) {
       try {
         activePlaylistRoomRef.current = room;
         setPlaylistGain(nextGain);
-        audio.volume = volume;
+        // Claim playback synchronously while an Enter/click gesture is still
+        // active, including when metadata is slow. Keep the element silent
+        // until it has been moved to the synchronized position.
+        audio.volume = 0;
         audio.muted = muted;
         audio.preload = "auto";
         audio.crossOrigin = "anonymous";
@@ -447,12 +450,10 @@ export function EntryProvider({ children }: { children: ReactNode }) {
 
         playlistPlaybackRef.current = playback;
 
-        let mutedWarmPlayError: unknown = null;
-        const mutedWarmPlayPromise = muted
-          ? audio.play().catch((error: unknown) => {
-              mutedWarmPlayError = error;
-            })
-          : null;
+        let initialPlayError: unknown = null;
+        const initialPlayPromise = audio.play().catch((error: unknown) => {
+          initialPlayError = error;
+        });
 
         await waitForPlaylistMetadata(
           audio,
@@ -469,12 +470,21 @@ export function EntryProvider({ children }: { children: ReactNode }) {
           audio.currentTime = offset;
         }
 
-        if (mutedWarmPlayPromise) {
-          await mutedWarmPlayPromise;
+        if (playlistRequestIdRef.current !== requestId) {
+          return;
+        }
 
-          if (mutedWarmPlayError) {
-            throw mutedWarmPlayError;
-          }
+        audio.volume = volume;
+        audio.muted = muted;
+
+        await initialPlayPromise;
+
+        if (initialPlayError) {
+          throw initialPlayError;
+        }
+
+        if (playlistRequestIdRef.current !== requestId) {
+          return;
         }
 
         if (audio.paused) {

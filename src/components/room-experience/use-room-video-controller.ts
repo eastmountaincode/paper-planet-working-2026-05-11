@@ -48,6 +48,9 @@ type VideoHealthWatch = {
 };
 
 const VIDEO_HEALTH_CHECK_MS = 2_000;
+const VIDEO_ACTIVE_LOAD_GRACE_MS = 10_000;
+const VIDEO_HANDOFF_RESERVE_MS = 5_000;
+const VIDEO_SEEK_SETTLE_GRACE_MS = 5_000;
 const VIDEO_STALL_THRESHOLD_MS = 5_000;
 const VIDEO_RECOVERY_BACKOFF_MS = [0, 1_000, 3_000, 8_000, 15_000];
 
@@ -110,11 +113,15 @@ export function useRoomVideoController({
   const sceneViewportRef = useRef<SceneViewport | null>(null);
   const visibleSceneViewportRef = useRef<SceneViewport | null>(null);
   const pendingVideoFrameKeyRef = useRef<string | null>(null);
+  const retainedVideoReleaseTimerRef = useRef<number | null>(null);
   const transitionMinimumUntilRef = useRef(0);
   const transitionRevealTimerRef = useRef<number | null>(null);
   const videoLoadWatchRef = useRef(createVideoLoadWatch());
   const videoHealthWatchRef = useRef<VideoHealthWatch | null>(null);
+  const videoSeekAtRef = useRef(new WeakMap<HTMLVideoElement, number>());
   const [sceneViewport, setSceneViewport] = useState<SceneViewport | null>(null);
+  const [retainedSceneViewport, setRetainedSceneViewport] =
+    useState<SceneViewport | null>(null);
   const [visibleSceneViewport, setVisibleSceneViewport] =
     useState<SceneViewport | null>(null);
   const [isExiting, setIsExiting] = useState(false);
@@ -160,7 +167,21 @@ export function useRoomVideoController({
         return false;
       }
 
+      const lastSeekAt = videoSeekAtRef.current.get(video);
+
+      // A slow range seek can finish a few seconds behind the wall clock. Let
+      // that decoded frame become visible instead of immediately chasing the
+      // moving target with another seek; the normal sync watchdog will refine
+      // any remaining drift after the element has settled.
+      if (
+        lastSeekAt !== undefined &&
+        performance.now() - lastSeekAt < VIDEO_SEEK_SETTLE_GRACE_MS
+      ) {
+        return false;
+      }
+
       video.currentTime = targetTime;
+      videoSeekAtRef.current.set(video, performance.now());
       return true;
     },
     [getSyncedTime, syncedPlayback],
@@ -200,6 +221,13 @@ export function useRoomVideoController({
 
     return viewport ? videoElementsRef.current[viewport] : null;
   }, []);
+
+  const setVideoElement = useCallback(
+    (viewport: SceneViewport, element: HTMLVideoElement | null) => {
+      videoElementsRef.current[viewport] = element;
+    },
+    [],
+  );
 
   const revealReadyVideo = useCallback(() => {
     if (transitionRevealTimerRef.current !== null) {
@@ -263,6 +291,27 @@ export function useRoomVideoController({
           video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
         ) {
           return;
+        }
+
+        const previousVisibleViewport = visibleSceneViewportRef.current;
+
+        if (
+          previousVisibleViewport &&
+          previousVisibleViewport !== viewport
+        ) {
+          videoElementsRef.current[previousVisibleViewport]?.pause();
+
+          if (retainedVideoReleaseTimerRef.current !== null) {
+            window.clearTimeout(retainedVideoReleaseTimerRef.current);
+          }
+
+          setRetainedSceneViewport(previousVisibleViewport);
+          retainedVideoReleaseTimerRef.current = window.setTimeout(() => {
+            retainedVideoReleaseTimerRef.current = null;
+            setRetainedSceneViewport((current) =>
+              current === previousVisibleViewport ? null : current,
+            );
+          }, VIDEO_HANDOFF_RESERVE_MS);
         }
 
         visibleSceneViewportRef.current = viewport;
@@ -502,10 +551,16 @@ export function useRoomVideoController({
   }, []);
 
   const resetVideoForSceneSwitch = useCallback(() => {
+    if (retainedVideoReleaseTimerRef.current !== null) {
+      window.clearTimeout(retainedVideoReleaseTimerRef.current);
+      retainedVideoReleaseTimerRef.current = null;
+    }
+
     lastVideoTimeRef.current = 0;
     pendingVideoFrameKeyRef.current = null;
     videoLoadWatchRef.current = createVideoLoadWatch();
     videoHealthWatchRef.current = null;
+    setRetainedSceneViewport(null);
     setVideoReady(false);
   }, []);
 
@@ -570,6 +625,10 @@ export function useRoomVideoController({
       if (transitionRevealTimerRef.current !== null) {
         window.clearTimeout(transitionRevealTimerRef.current);
       }
+
+      if (retainedVideoReleaseTimerRef.current !== null) {
+        window.clearTimeout(retainedVideoReleaseTimerRef.current);
+      }
     },
     [],
   );
@@ -617,9 +676,14 @@ export function useRoomVideoController({
       const hasWaitedLongEnough =
         now - watch.startedAt >= VIDEO_LOAD_RECOVERY_MS &&
         now - watch.lastRecoveryAt >= VIDEO_LOAD_RECOVERY_MS;
+      const activeRangeRequestHasGrace =
+        video.networkState === HTMLMediaElement.NETWORK_LOADING &&
+        video.readyState >= HTMLMediaElement.HAVE_METADATA &&
+        now - watch.startedAt < VIDEO_ACTIVE_LOAD_GRACE_MS;
 
       if (
         hasWaitedLongEnough &&
+        !activeRangeRequestHasGrace &&
         watch.attempts < VIDEO_LOAD_RECOVERY_LIMIT &&
         !video.seeking &&
         video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
@@ -720,18 +784,17 @@ export function useRoomVideoController({
 
       if (sourceIsBroken || watch.attempts >= 3) {
         const expectedSource = getSceneVideoSource(scene, viewport).src;
-        const absoluteExpectedSource = new URL(
-          expectedSource,
-          window.location.href,
-        ).href;
 
         pendingVideoFrameKeyRef.current = null;
         setVideoReady(false);
 
-        if (video.src !== absoluteExpectedSource) {
-          video.src = expectedSource;
-        }
-
+        // Reset the resource selection algorithm as well as the decoder. A
+        // plain load() of the same URL can retain a cached NETWORK_NO_SOURCE
+        // state after a transient range failure in Chromium.
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        video.src = expectedSource;
         video.load();
       } else {
         syncVideoElementTime(video);
@@ -924,14 +987,10 @@ export function useRoomVideoController({
       }
     },
     resetVideoForSceneSwitch,
+    retainedSceneViewport,
     resolvedSceneViewport,
     sceneViewport,
-    setVideoElement: (
-      viewport: SceneViewport,
-      element: HTMLVideoElement | null,
-    ) => {
-      videoElementsRef.current[viewport] = element;
-    },
+    setVideoElement,
     syncVideoElementTime,
     toggleVisibleVideoAudio,
     transitionActive: isExiting || !videoReady,

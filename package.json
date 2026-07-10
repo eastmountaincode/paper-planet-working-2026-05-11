@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:media": "playwright test --grep-invert @soak",
-    "test:media:soak": "playwright test --grep @soak",
+    "test:media:soak": "MEDIA_SOAK_PARALLEL=1 playwright test --grep @soak",
     "audio:normalize": "node scripts/normalize-playlist-audio.mjs",
     "font:build": "node scripts/build-paper-planet-font.mjs",
     "playlists:generate": "node scripts/generate-playlists.mjs",

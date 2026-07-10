@@ -39,6 +39,7 @@ type RoomStageProps = {
   onVideoTimeUpdate: (timeSeconds: number) => void;
   onVideoVariantReady: (viewport: SceneViewport) => void;
   orderedHotspots: Hotspot[];
+  retainedSceneViewport: SceneViewport | null;
   resolvedSceneViewport: SceneViewport;
   safeSquareMetrics: SafeSquareMetrics;
   safeSquareVisible: boolean;
@@ -72,6 +73,7 @@ export function RoomStage({
   onVideoTimeUpdate,
   onVideoVariantReady,
   orderedHotspots,
+  retainedSceneViewport,
   resolvedSceneViewport,
   safeSquareMetrics,
   safeSquareVisible,
@@ -134,6 +136,7 @@ export function RoomStage({
             onPlaybackEvent={onVideoPlaybackEvent}
             onVariantReady={onVideoVariantReady}
             onVisibleTimeUpdate={onVideoTimeUpdate}
+            retainedSceneViewport={retainedSceneViewport}
             resolvedSceneViewport={resolvedSceneViewport}
             scene={scene}
             sceneViewport={sceneViewport}
