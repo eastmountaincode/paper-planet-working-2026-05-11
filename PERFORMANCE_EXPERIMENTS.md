@@ -295,6 +295,10 @@ URL was already correct. Reload-tier recovery now clears the source and media
 resource state before assigning the expected URL again. Fifteen repeated
 failure-injection runs (five per Chrome, Firefox, and WebKit) each aborted the
 first request for the expected TV-room URL and recovered on the next request.
+The per-element seek-settle timestamp is cleared with every destructive source
+reload, so the first synchronized seek after recovery cannot be suppressed;
+five consecutive WebKit dual-source recovery runs restored the HQ video within
+three seconds of its expected global position.
 
 ## Audio reliability iteration 3: preserve the trusted Enter gesture
 
@@ -355,6 +359,11 @@ pauses both streams and requires recovery on `visibilitychange` passes in all
 three engines. The corrected production-build soak passed 3/3 in 20.2 minutes
 with explicit visibility recovery at 25%, offline recovery at 50%, simultaneous
 broken-source restoration at 75%, and continuous five-second sampling.
+
+After the trusted-gesture, in-flight-load, hard-reset, and reversible viewport
+iterations, the complete soak was rerun on commit `1306461`: Chrome, Firefox,
+and WebKit again passed 3/3 in 20.2 minutes with all three injections and
+continuous dual-clock advancement.
 
 The final quick production matrix reports 37 passed and 2 expected skips. The
 skips are the Chromium-only DevTools lifecycle case in Firefox and WebKit;

@@ -694,6 +694,7 @@ export function useRoomVideoController({
           lastRecoveryAt: now,
         };
         pendingVideoFrameKeyRef.current = null;
+        videoSeekAtRef.current.delete(video);
         video.load();
         void video.play().catch(() => undefined);
       }
@@ -794,6 +795,7 @@ export function useRoomVideoController({
         video.pause();
         video.removeAttribute("src");
         video.load();
+        videoSeekAtRef.current.delete(video);
         video.src = expectedSource;
         video.load();
       } else {
