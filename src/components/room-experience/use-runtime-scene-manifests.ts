@@ -9,6 +9,10 @@ import {
   hotspotManifestToSceneHotspots,
   normalizeHotspotManifest,
 } from "@/lib/hotspot-manifest";
+import {
+  fetchRuntimeManifestBundle,
+  type RuntimeManifestBundle,
+} from "@/lib/runtime-manifest-client";
 import { createScenes, type Scene, type SceneSlug } from "@/lib/scenes";
 import { normalizeSiteSettingsManifest } from "@/lib/site-settings";
 
@@ -35,26 +39,17 @@ export function useRuntimeSceneManifests({
     let isCanceled = false;
 
     async function loadRuntimeManifests() {
-      const [playlistResponse, hotspotResponse, settingsResponse] =
-        await Promise.all([
-          fetch("/api/playlists", { cache: "no-store" }).catch(() => null),
-          fetch("/api/hotspots", { cache: "no-store" }).catch(() => null),
-          fetch("/api/settings", { cache: "no-store" }).catch(() => null),
-        ]);
-
-      const playlistResult = playlistResponse?.ok
-        ? ((await playlistResponse.json()) as { manifest?: unknown })
-        : {};
-      const hotspotResult = hotspotResponse?.ok
-        ? ((await hotspotResponse.json()) as { manifest?: unknown })
-        : {};
-      const settingsResult = settingsResponse?.ok
-        ? ((await settingsResponse.json()) as { manifest?: unknown })
-        : {};
-      const playlistManifest = normalizePlaylistManifest(playlistResult.manifest);
-      const hotspotManifest = normalizeHotspotManifest(hotspotResult.manifest);
+      const result = await fetchRuntimeManifestBundle().catch(
+        (): RuntimeManifestBundle => ({}),
+      );
+      const playlistManifest = normalizePlaylistManifest(
+        result.playlists?.manifest,
+      );
+      const hotspotManifest = normalizeHotspotManifest(
+        result.hotspots?.manifest,
+      );
       const settingsManifest = normalizeSiteSettingsManifest(
-        settingsResult.manifest,
+        result.settings?.manifest,
       );
       const nextScenes = createScenes(
         playlistManifestToScenePlaylists(playlistManifest),

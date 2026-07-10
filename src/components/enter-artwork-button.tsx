@@ -4,6 +4,7 @@ import type { KeyboardEvent, PointerEvent } from "react";
 import { useEffect, useState } from "react";
 import enterHotspotsData from "@/lib/enter-hotspots.json";
 import { normalizeHotspotManifest } from "@/lib/hotspot-manifest";
+import { fetchRuntimeManifestBundle } from "@/lib/runtime-manifest-client";
 import type { Hotspot, PercentPoint, RectHotspot } from "@/lib/scenes";
 
 const ENTER_ARTWORK_SRC = "/enter/paper-planet-enter.webp";
@@ -49,14 +50,8 @@ export function EnterArtworkButton({
     let isCanceled = false;
 
     async function loadRuntimeHotspots() {
-      const response = await fetch("/api/hotspots", { cache: "no-store" });
-
-      if (!response.ok) {
-        return;
-      }
-
-      const result = (await response.json()) as { manifest?: unknown };
-      const manifest = normalizeHotspotManifest(result.manifest);
+      const result = await fetchRuntimeManifestBundle();
+      const manifest = normalizeHotspotManifest(result.hotspots?.manifest);
 
       if (!isCanceled) {
         setEnterHotspots(manifest.enter);

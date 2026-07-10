@@ -6,6 +6,7 @@ import {
   readSiteSettingsManifest,
   writeSiteSettingsManifest,
 } from "@/lib/admin/settings";
+import { invalidateRuntimeManifestCache } from "@/lib/admin/runtime-manifests";
 import { normalizeSiteSettingsManifest } from "@/lib/site-settings";
 
 export const runtime = "nodejs";
@@ -39,6 +40,7 @@ export async function PUT(request: Request) {
     ...manifest,
     updatedAt: new Date().toISOString(),
   });
+  invalidateRuntimeManifestCache();
 
   return Response.json({ manifest: savedManifest, source: "r2" });
 }

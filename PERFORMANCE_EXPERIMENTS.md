@@ -55,6 +55,29 @@ Mobile Chromium sample using the separate 27.2 MB HQ portrait video:
 
 The same animation-bounded behavior therefore holds on the mobile viewport branch.
 
+## Iteration 3: consolidate and cache runtime manifests
+
+The entry art and room runtime independently requested the public hotspot data,
+while the room also requested playlists and settings. A first page load therefore
+made four API requests and could fan out across separate serverless invocations.
+
+Implementation:
+
+- Add one `/api/runtime` endpoint that reads hotspot, playlist, and settings
+  manifests concurrently.
+- Share one in-flight client promise between the entry artwork and room runtime.
+- Cache the combined server result for five minutes with a Next.js cache tag.
+- Immediately expire that tag after every successful admin hotspot, playlist,
+  or settings publish, preserving read-after-write behavior.
+- Keep static normalizers as the fail-soft path if the combined request fails.
+
+Production-server result:
+
+- Initial page requests dropped from four manifest requests to one.
+- Combined payload: about 92 KB.
+- Cold local R2-backed request: 220.8 ms in the measured sample.
+- Four following requests: 2.8-3.7 ms each.
+
 ## Rejected experiment: shorter MP4 keyframe intervals
 
 The published HQ H.264 files have a 10.417-second fixed keyframe interval.

@@ -119,16 +119,18 @@ async function waitForHealthyDualAudio(page: Page, timeout = 8_000) {
 }
 
 async function openHqWithDualAudio(page: Page) {
-  await page.route("**/api/settings", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(dualAudioSettings),
-    }),
-  );
+  await page.route("**/api/runtime", async (route) => {
+    const response = await route.fetch();
+    const result = (await response.json()) as Record<string, unknown>;
+
+    await route.fulfill({
+      response,
+      json: { ...result, settings: dualAudioSettings },
+    });
+  });
   const settingsLoaded = page.waitForResponse(
     (response) =>
-      new URL(response.url()).pathname === "/api/settings" && response.ok(),
+      new URL(response.url()).pathname === "/api/runtime" && response.ok(),
   );
 
   await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
@@ -461,6 +463,37 @@ test("intentional mixer mutes survive watchdog intervals", async ({ page }) => {
 
   await page.getByRole("button", { name: "Unmute", exact: true }).click();
   await waitForHealthyDualAudio(page);
+});
+
+test("runtime manifest outage falls back to static room media", async ({
+  page,
+}) => {
+  await page.route("**/api/runtime", (route) => route.abort("failed"));
+  await page.goto("/?debug=true", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Enter", exact: true }).click();
+  await navigateByRoomTitle(page, "Paper Planet HQ");
+  await waitForRoomVideo(page, "Paper Planet HQ");
+
+  await page.waitForFunction(
+    () => {
+      const audio = document.querySelector<HTMLAudioElement>("audio");
+
+      return Boolean(
+        audio &&
+          audio.currentSrc.includes("/audio/normalized/hq/") &&
+          !audio.paused &&
+          !audio.muted &&
+          audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+
+  await expect(page.locator("video")).toHaveCount(1);
+  await expect(
+    page.locator('video[aria-label="Paper Planet HQ room video"]'),
+  ).toHaveAttribute("src", /hq-desktop\.mp4/);
 });
 
 test("@soak dual audio remains healthy for twenty minutes", async ({

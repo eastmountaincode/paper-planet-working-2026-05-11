@@ -6,6 +6,7 @@ import {
   readHotspotManifest,
   writeHotspotManifest,
 } from "@/lib/admin/hotspots";
+import { invalidateRuntimeManifestCache } from "@/lib/admin/runtime-manifests";
 import {
   hotspotSceneSlugs,
   hotspotSceneViewports,
@@ -104,6 +105,7 @@ export async function PUT(request: Request) {
     ...manifest,
     updatedAt: new Date().toISOString(),
   });
+  invalidateRuntimeManifestCache();
 
   return Response.json({ manifest: savedManifest, source: "r2" });
 }
@@ -126,6 +128,7 @@ export async function POST(request: Request) {
     const { manifest } = await readHotspotManifest();
     const nextManifest = saveTargetHotspots(manifest, body);
     const savedManifest = await writeHotspotManifest(nextManifest);
+    invalidateRuntimeManifestCache();
 
     return Response.json({
       manifest: savedManifest,
@@ -141,4 +144,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

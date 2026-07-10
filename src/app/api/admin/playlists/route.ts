@@ -6,6 +6,7 @@ import {
   readPlaylistManifest,
   writePlaylistManifest,
 } from "@/lib/admin/playlists";
+import { invalidateRuntimeManifestCache } from "@/lib/admin/runtime-manifests";
 import { normalizePlaylistManifest } from "@/lib/playlist-manifest";
 
 export const runtime = "nodejs";
@@ -39,6 +40,7 @@ export async function PUT(request: Request) {
     ...manifest,
     updatedAt: new Date().toISOString(),
   });
+  invalidateRuntimeManifestCache();
 
   return Response.json({ manifest: savedManifest, source: "r2" });
 }
