@@ -61,41 +61,55 @@ body {
   }
 }
 
-.frame-demo-browser-scroll-spacer {
-  display: none;
+html:has(main[data-demo="full-bleed"]),
+body:has(main[data-demo="full-bleed"]) {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
+  background-color: #718991;
+  background-image: url("/tools/frame-demo/home-landscape-poster.webp");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: auto 100vh;
 }
 
-@media (max-width: 768px) and (hover: none) and (pointer: coarse) {
-  html.frame-demo-browser-scroll {
-    height: auto;
-    min-height: 100%;
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior-x: none;
-    overscroll-behavior-y: auto;
+body:has(main[data-demo="full-bleed"]) {
+  display: block;
+}
+
+.frame-demo-full-bleed-stage {
+  min-height: 100vh;
+  background-color: #718991;
+  background-image: url("/tools/frame-demo/home-landscape-poster.webp");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto 100%;
+}
+
+.frame-demo-browser-scroll-tail {
+  height: 1px;
+  background-color: #696d68;
+  background-image: url("/tools/frame-demo/home-landscape-poster.webp");
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-size: auto 100vh;
+}
+
+@supports (height: 100lvh) {
+  html:has(main[data-demo="full-bleed"]),
+  body:has(main[data-demo="full-bleed"]) {
+    background-size: auto 100lvh;
   }
 
-  body.frame-demo-browser-scroll {
-    height: auto;
-    min-height: 100%;
-    overflow-x: clip;
-    overflow-y: visible;
-    overscroll-behavior-x: none;
-    overscroll-behavior-y: auto;
+  .frame-demo-full-bleed-stage {
+    min-height: 100lvh;
   }
 
-  .frame-demo-scroll-stage {
-    position: sticky;
-    width: 100%;
-    height: 100lvh;
-    flex: 0 0 auto;
-  }
-
-  .frame-demo-browser-scroll-spacer {
-    display: block;
-    height: 200lvh;
-    width: 1px;
-    flex: 0 0 auto;
+  .frame-demo-browser-scroll-tail {
+    background-size: auto 100lvh;
   }
 }
 

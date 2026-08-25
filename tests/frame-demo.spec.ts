@@ -63,8 +63,12 @@ test.describe("standalone frame demos", () => {
     const video = page.locator("video");
 
     await expect(demo).toHaveAttribute("data-pan-enabled", "true");
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(demo).toHaveAttribute("data-viewport-height", "large");
     await expect(video).toBeVisible();
+    await expect(video).toHaveAttribute(
+      "poster",
+      "/tools/frame-demo/home-landscape-poster.webp",
+    );
 
     const geometry = await page.evaluate(() => {
       const main = document.querySelector("main")?.getBoundingClientRect();
@@ -95,7 +99,7 @@ test.describe("standalone frame demos", () => {
       .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
   });
 
-  test("touch mode lets browser chrome collapse around the pinned video", async ({
+  test("touch mode uses a scene-backed natural document for browser chrome", async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -108,25 +112,42 @@ test.describe("standalone frame demos", () => {
     await page.goto("/tools/frame-demo/full-bleed");
 
     const demo = page.locator("main[data-demo='full-bleed']");
-    const spacer = page.locator("[data-browser-chrome-scroll='true']");
 
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
-    await expect(spacer).toBeVisible();
+    await expect(demo).toHaveAttribute("data-viewport-height", "large");
+    await expect(
+      page.locator("[data-browser-chrome-scroll-tail='true']"),
+    ).toBeVisible();
 
     const scrollState = await page.evaluate(() => {
       const demo = document.querySelector("main[data-demo='full-bleed']");
       const panSurface = document.querySelector(
         "[data-pan-surface='true']",
       );
+      const scrollTail = document.querySelector(
+        "[data-browser-chrome-scroll-tail='true']",
+      );
 
       return {
         bodyOverflowY: getComputedStyle(document.body).overflowY,
+        bodyBackgroundColor: getComputedStyle(document.body).backgroundColor,
+        bodyBackgroundImage: getComputedStyle(document.body).backgroundImage,
         documentOverflowY: getComputedStyle(
           document.documentElement,
         ).overflowY,
+        documentBackgroundColor: getComputedStyle(
+          document.documentElement,
+        ).backgroundColor,
+        documentBackgroundImage: getComputedStyle(
+          document.documentElement,
+        ).backgroundImage,
+        isRootScroller:
+          document.scrollingElement === document.documentElement,
         stageHeight: demo ? getComputedStyle(demo).height : null,
         stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
+        tailBackgroundImage: scrollTail
+          ? getComputedStyle(scrollTail).backgroundImage
+          : null,
         touchAction: panSurface
           ? getComputedStyle(panSurface).touchAction
           : null,
@@ -134,29 +155,38 @@ test.describe("standalone frame demos", () => {
       };
     });
 
-    expect(scrollState.bodyOverflowY).toBe("visible");
+    expect(scrollState.bodyOverflowY).toBe("auto");
     expect(scrollState.documentOverflowY).toBe("auto");
+    expect(scrollState.bodyBackgroundColor).toBe("rgb(113, 137, 145)");
+    expect(scrollState.documentBackgroundColor).toBe("rgb(113, 137, 145)");
+    expect(scrollState.bodyBackgroundImage).toContain(
+      "home-landscape-poster.webp",
+    );
+    expect(scrollState.documentBackgroundImage).toContain(
+      "home-landscape-poster.webp",
+    );
+    expect(scrollState.isRootScroller).toBe(true);
     expect(scrollState.stageHeight).toBe("1000px");
-    expect(scrollState.stagePosition).toBe("sticky");
-    expect(scrollState.scrollHeight).toBeGreaterThanOrEqual(
-      scrollState.viewportHeight * 3,
+    expect(scrollState.stagePosition).toBe("relative");
+    expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.viewportHeight);
+    expect(scrollState.tailBackgroundImage).toContain(
+      "home-landscape-poster.webp",
     );
     expect(scrollState.touchAction).toContain("pan-x");
     expect(scrollState.touchAction).toContain("pan-y");
 
-    await page.evaluate(() => window.scrollTo(0, 500));
+    await page.evaluate(() => window.scrollTo(0, 1));
 
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY))
-      .toBeGreaterThanOrEqual(500);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1);
 
-    const pinnedStage = await demo.evaluate((element) => {
+    const naturalStage = await demo.evaluate((element) => {
       const rect = element.getBoundingClientRect();
 
       return { height: rect.height, top: rect.top };
     });
 
-    expect(pinnedStage).toEqual({ height: 1000, top: 0 });
+    expect(naturalStage.height).toBe(1000);
+    expect(naturalStage.top).toBe(-1);
 
     await context.close();
   });
@@ -174,7 +204,7 @@ test.describe("standalone frame demos", () => {
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(demo).toHaveAttribute("data-viewport-height", "large");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",

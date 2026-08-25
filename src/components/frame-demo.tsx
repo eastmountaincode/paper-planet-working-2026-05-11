@@ -19,6 +19,7 @@ export type FrameDemoId = "full-bleed" | "green-room" | "home";
 
 type DemoSource = {
   key: "green-landscape" | "green-portrait" | "home-landscape";
+  poster?: string;
   spec: VideoFrameSpec;
   src: string;
 };
@@ -31,6 +32,7 @@ const PAN_MAX_VIEWPORT_WIDTH = 768;
 
 const HOME_SOURCE: DemoSource = {
   key: "home-landscape",
+  poster: "/tools/frame-demo/home-landscape-poster.webp",
   spec: VIDEO_FRAME_SPECS["landscape-export"],
   src: "/api/tools/frame-demo/home-landscape",
 };
@@ -193,22 +195,6 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   }, [demo]);
 
   useEffect(() => {
-    if (demo !== "full-bleed") {
-      return;
-    }
-
-    const className = "frame-demo-browser-scroll";
-
-    document.documentElement.classList.add(className);
-    document.body.classList.add(className);
-
-    return () => {
-      document.documentElement.classList.remove(className);
-      document.body.classList.remove(className);
-    };
-  }, [demo]);
-
-  useEffect(() => {
     if (!isPanEnabled) {
       return;
     }
@@ -248,7 +234,11 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       <main
         ref={frameRef}
         aria-label={`${demoLabel} responsive video safe-zone demo`}
-        className="frame-demo-full-height frame-demo-scroll-stage fixed left-0 top-0 w-screen overflow-hidden bg-black"
+        className={
+          demo === "full-bleed"
+            ? "frame-demo-full-bleed-stage relative w-full overflow-hidden"
+            : "frame-demo-full-height fixed left-0 top-0 w-screen overflow-hidden bg-black"
+        }
         data-demo={demo}
         data-layout-mode={
           demo === "full-bleed"
@@ -256,7 +246,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             : "fixed-safe-zone"
         }
         data-pan-enabled={String(isPanEnabled)}
-        data-viewport-height="dynamic"
+        data-viewport-height={demo === "full-bleed" ? "large" : "dynamic"}
         data-safe-zone-visible={String(safeZoneVisible)}
         data-safe-zone-source-height={String(Math.round(safeRect.height))}
         data-safe-zone-source-width={String(Math.round(safeRect.width))}
@@ -289,6 +279,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             loop
             muted
             playsInline
+            poster={source.poster}
             preload="auto"
             src={source.src}
             onLoadedMetadata={resumePlayback}
@@ -335,8 +326,8 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       {demo === "full-bleed" ? (
         <div
           aria-hidden="true"
-          className="frame-demo-browser-scroll-spacer"
-          data-browser-chrome-scroll="true"
+          className="frame-demo-browser-scroll-tail"
+          data-browser-chrome-scroll-tail="true"
         />
       ) : null}
     </>
