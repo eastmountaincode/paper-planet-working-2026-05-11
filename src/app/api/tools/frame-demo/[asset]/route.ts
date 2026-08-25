@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 type DemoAsset = {
   contentType: string;
   filePath: string;
+  publicPath: string;
 };
+
+const FRAME_DEMO_MEDIA_VERSION = "20260825-web-v1";
 
 function getDemoAssets(): Record<string, DemoAsset> {
   const phaseTwoRoot = path.join(
@@ -24,16 +27,48 @@ function getDemoAssets(): Record<string, DemoAsset> {
     "home-landscape": {
       contentType: "video/quicktime",
       filePath: `${phaseTwoRoot}/_TEMP home - Landscape-001.mov`,
+      publicPath: "tools/frame-demo/phase2/home-landscape.mp4",
     },
     "green-landscape": {
       contentType: "video/mp4",
       filePath: `${phaseTwoRoot}/Phase 4/ROOMS/GREEN ROOM - Landscape.MP4`,
+      publicPath: "tools/frame-demo/phase2/green-landscape.mp4",
     },
     "green-portrait": {
       contentType: "video/mp4",
       filePath: `${phaseTwoRoot}/Phase 4/ROOMS/GREEN ROOM - Vertical.MP4`,
+      publicPath: "tools/frame-demo/phase2/green-portrait.mp4",
     },
   };
+}
+
+function getPublicAssetUrl(asset: DemoAsset) {
+  const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL;
+
+  if (!mediaBaseUrl) {
+    return null;
+  }
+
+  const baseUrl = mediaBaseUrl.replace(/\/$/, "");
+  const publicPath = asset.publicPath.replace(/^\//, "");
+
+  return `${baseUrl}/${publicPath}?v=${FRAME_DEMO_MEDIA_VERSION}`;
+}
+
+function publicAssetRedirect(asset: DemoAsset) {
+  const url = getPublicAssetUrl(asset);
+
+  if (!url) {
+    return null;
+  }
+
+  return new Response(null, {
+    status: 307,
+    headers: {
+      "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+      Location: url,
+    },
+  });
 }
 
 function parseRange(rangeHeader: string, fileSize: number) {
@@ -86,12 +121,12 @@ async function getAsset(assetKey: string) {
     const file = await stat(/* turbopackIgnore: true */ asset.filePath);
 
     if (!file.isFile()) {
-      return null;
+      return { ...asset, size: null };
     }
 
     return { ...asset, size: file.size };
   } catch {
-    return null;
+    return { ...asset, size: null };
   }
 }
 
@@ -115,6 +150,10 @@ export async function HEAD(
     return new Response(null, { status: 404 });
   }
 
+  if (asset.size === null) {
+    return publicAssetRedirect(asset) ?? new Response(null, { status: 404 });
+  }
+
   return new Response(null, {
     headers: baseHeaders(asset, asset.size),
   });
@@ -129,6 +168,13 @@ export async function GET(
 
   if (!asset) {
     return new Response("Demo video not found", { status: 404 });
+  }
+
+  if (asset.size === null) {
+    return (
+      publicAssetRedirect(asset) ??
+      new Response("Demo video not found", { status: 404 })
+    );
   }
 
   const rangeHeader = request.headers.get("range");
