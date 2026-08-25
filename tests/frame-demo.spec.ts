@@ -139,10 +139,19 @@ test.describe("standalone frame demos", () => {
         isRootScroller:
           document.scrollingElement === document.documentElement,
         stageHeight: demo ? getComputedStyle(demo).height : null,
+        stageBackgroundColor: demo
+          ? getComputedStyle(demo).backgroundColor
+          : null,
+        stageBackgroundImage: demo
+          ? getComputedStyle(demo).backgroundImage
+          : null,
         stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
         overscrollBehaviorX: panSurface
           ? getComputedStyle(panSurface).overscrollBehaviorX
+          : null,
+        panBackgroundColor: panSurface
+          ? getComputedStyle(panSurface).backgroundColor
           : null,
         touchAction: panSurface
           ? getComputedStyle(panSurface).touchAction
@@ -153,19 +162,18 @@ test.describe("standalone frame demos", () => {
 
     expect(scrollState.bodyOverflowY).toBe("hidden");
     expect(scrollState.documentOverflowY).toBe("hidden");
-    expect(scrollState.bodyBackgroundColor).toBe("rgb(113, 137, 145)");
-    expect(scrollState.documentBackgroundColor).toBe("rgb(113, 137, 145)");
-    expect(scrollState.bodyBackgroundImage).toContain(
-      "home-landscape-poster.webp",
-    );
-    expect(scrollState.documentBackgroundImage).toContain(
-      "home-landscape-poster.webp",
-    );
+    expect(scrollState.bodyBackgroundColor).toBe("rgb(0, 0, 0)");
+    expect(scrollState.documentBackgroundColor).toBe("rgb(0, 0, 0)");
+    expect(scrollState.bodyBackgroundImage).toBe("none");
+    expect(scrollState.documentBackgroundImage).toBe("none");
     expect(scrollState.isRootScroller).toBe(true);
     expect(scrollState.stageHeight).toBe("1000px");
+    expect(scrollState.stageBackgroundColor).toBe("rgb(0, 0, 0)");
+    expect(scrollState.stageBackgroundImage).toBe("none");
     expect(scrollState.stagePosition).toBe("relative");
     expect(scrollState.scrollHeight).toBe(scrollState.viewportHeight);
     expect(scrollState.overscrollBehaviorX).toBe("none");
+    expect(scrollState.panBackgroundColor).toBe("rgb(0, 0, 0)");
     expect(scrollState.touchAction).toContain("pan-x");
     expect(scrollState.touchAction).not.toContain("pan-y");
 

@@ -66,11 +66,7 @@ body:has(main[data-demo="full-bleed"]) {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
-  background-color: #718991;
-  background-image: url("/tools/frame-demo/home-landscape-poster.webp");
-  background-position: center top;
-  background-repeat: no-repeat;
-  background-size: auto 100vh;
+  background: #000;
 }
 
 body:has(main[data-demo="full-bleed"]) {
@@ -79,19 +75,10 @@ body:has(main[data-demo="full-bleed"]) {
 
 .frame-demo-full-bleed-stage {
   height: 100vh;
-  background-color: #718991;
-  background-image: url("/tools/frame-demo/home-landscape-poster.webp");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto 100%;
+  background: #000;
 }
 
 @supports (height: 100dvh) {
-  html:has(main[data-demo="full-bleed"]),
-  body:has(main[data-demo="full-bleed"]) {
-    background-size: auto 100dvh;
-  }
-
   .frame-demo-full-bleed-stage {
     height: 100dvh;
   }
