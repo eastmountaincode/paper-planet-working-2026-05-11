@@ -29,33 +29,6 @@ const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
 const PAN_MAX_VIEWPORT_WIDTH = 768;
-const MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE = 0.8;
-
-function getFullBleedCanvasHeight(
-  contentHeight: number,
-  contentWidth: number,
-) {
-  if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
-    return contentHeight;
-  }
-
-  const isPortrait = contentHeight >= contentWidth;
-  const screenWidth = isPortrait
-    ? Math.min(window.screen.height, window.screen.width)
-    : Math.max(window.screen.height, window.screen.width);
-  const screenHeight = isPortrait
-    ? Math.max(window.screen.height, window.screen.width)
-    : Math.min(window.screen.height, window.screen.width);
-
-  if (
-    contentWidth / Math.max(screenWidth, 1) <
-    MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE
-  ) {
-    return contentHeight;
-  }
-
-  return Math.max(contentHeight, screenHeight);
-}
 
 const HOME_SOURCE: DemoSource = {
   key: "home-landscape",
@@ -130,13 +103,10 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const playbackTimeRef = useRef(0);
   const sourceKeyRef = useRef<DemoSource["key"]>(HOME_SOURCE.key);
   const [viewport, setViewport] = useState({
-    canvasHeight: 900,
-    contentHeight: 900,
-    measured: false,
-    requestedCanvasHeight: 900,
+    height: 900,
     width: 1600,
   });
-  const viewportAspect = viewport.width / viewport.canvasHeight;
+  const viewportAspect = viewport.width / viewport.height;
   const source = getSource(demo, viewportAspect);
   const sourceAspect = source.spec.videoWidth / source.spec.videoHeight;
   const isPanEnabled =
@@ -166,19 +136,8 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       animationFrame = window.requestAnimationFrame(() => {
         const frame = frameRef.current?.getBoundingClientRect();
         const width = frame?.width ?? window.innerWidth;
-        const contentHeight =
-          demo === "full-bleed"
-            ? window.innerHeight
-            : (frame?.height ?? window.innerHeight);
-        const requestedCanvasHeight =
-          demo === "full-bleed"
-            ? getFullBleedCanvasHeight(contentHeight, width)
-            : contentHeight;
-        const canvasHeight =
-          demo === "full-bleed"
-            ? Math.max(frame?.height ?? contentHeight, requestedCanvasHeight)
-            : contentHeight;
-        const nextAspect = width / Math.max(canvasHeight, 1);
+        const height = frame?.height ?? window.innerHeight;
+        const nextAspect = width / Math.max(height, 1);
         const nextSource = getSource(demo, nextAspect);
 
         if (nextSource.key !== sourceKeyRef.current) {
@@ -192,23 +151,11 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         }
 
         setViewport((current) => {
-          if (
-            current.canvasHeight === canvasHeight &&
-            current.contentHeight === contentHeight &&
-            current.measured &&
-            current.requestedCanvasHeight === requestedCanvasHeight &&
-            current.width === width
-          ) {
+          if (current.height === height && current.width === width) {
             return current;
           }
 
-          return {
-            canvasHeight,
-            contentHeight,
-            measured: true,
-            requestedCanvasHeight,
-            width,
-          };
+          return { height, width };
         });
       });
     };
@@ -236,11 +183,31 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       return;
     }
 
-    const animationFrame = window.requestAnimationFrame(() => {
-      centerPanSurface(panRef.current);
-    });
+    const panSurface = panRef.current;
+    const video = videoRef.current;
+    let animationFrame = 0;
+    const center = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        centerPanSurface(panSurface);
+      });
+    };
+    const resizeObserver = new ResizeObserver(center);
 
-    return () => window.cancelAnimationFrame(animationFrame);
+    if (panSurface) {
+      resizeObserver.observe(panSurface);
+    }
+
+    if (video) {
+      resizeObserver.observe(video);
+    }
+
+    center();
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+    };
   }, [isPanEnabled, source.key]);
 
   const resumePlayback = (event: SyntheticEvent<HTMLVideoElement>) => {
@@ -283,30 +250,19 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             : "fixed-safe-zone"
         }
         data-pan-enabled={String(isPanEnabled)}
-        data-browser-canvas-height={String(Math.round(viewport.canvasHeight))}
-        data-browser-content-height={String(
-          Math.round(viewport.contentHeight),
-        )}
-        data-viewport-height={demo === "full-bleed" ? "screen" : "dynamic"}
+        data-viewport-height="dynamic"
         data-safe-zone-visible={String(safeZoneVisible)}
         data-safe-zone-source-height={String(Math.round(safeRect.height))}
         data-safe-zone-source-width={String(Math.round(safeRect.width))}
         data-source={source.key}
         data-supported={String(isSupported)}
-        style={
-          demo === "full-bleed" && viewport.measured
-            ? ({
-                "--frame-demo-screen-height": `${viewport.requestedCanvasHeight}px`,
-              } as CSSProperties)
-            : undefined
-        }
       >
         <div
           ref={panRef}
           aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
-          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
+          className={`absolute inset-0 bg-black focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
             isPanEnabled
-              ? "touch-pan-x touch-pan-y overflow-x-auto overflow-y-hidden overscroll-x-none overscroll-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               : "overflow-hidden"
           }`}
           data-pan-surface="true"
@@ -350,14 +306,6 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           />
         ) : null}
       </main>
-
-      {demo === "full-bleed" ? (
-        <div
-          aria-hidden="true"
-          className="frame-demo-browser-scroll-tail"
-          data-browser-chrome-scroll-tail="true"
-        />
-      ) : null}
     </>
   );
 }
