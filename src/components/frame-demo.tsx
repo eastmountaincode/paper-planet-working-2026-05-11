@@ -102,6 +102,20 @@ function getDynamicSafeRect(
   } satisfies SourceRect;
 }
 
+function getMinimumSafeRect(source: DemoSource) {
+  const width = Math.min(
+    source.spec.safeRect.width,
+    source.spec.videoHeight * MIN_SUPPORTED_ASPECT,
+  );
+
+  return {
+    height: source.spec.safeRect.height,
+    width,
+    x: (source.spec.videoWidth - width) / 2,
+    y: source.spec.safeRect.y,
+  } satisfies SourceRect;
+}
+
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playbackTimeRef = useRef(0);
@@ -120,6 +134,8 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const safeRect = hasDynamicSafeZone
     ? getDynamicSafeRect(viewportAspect, source)
     : source.spec.safeRect;
+  const minimumSafeRect =
+    demo === "full-bleed" ? getMinimumSafeRect(source) : null;
 
   const visibleRect = getVisibleSourceRect(
     source.spec.videoWidth,
@@ -221,6 +237,21 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         data-safe-zone="true"
         style={safeRectStyle(safeRect, visibleRect)}
       />
+
+      {minimumSafeRect ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute border-x-2 border-dashed border-cyan-300 bg-cyan-300/5"
+          data-minimum-safe-zone="true"
+          data-source-height={String(Math.round(minimumSafeRect.height))}
+          data-source-width={String(Math.round(minimumSafeRect.width))}
+          style={safeRectStyle(minimumSafeRect, visibleRect)}
+        >
+          <span className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-cyan-100 backdrop-blur-sm">
+            Minimum width · {Math.round(minimumSafeRect.width)} px
+          </span>
+        </div>
+      ) : null}
     </main>
   );
 }

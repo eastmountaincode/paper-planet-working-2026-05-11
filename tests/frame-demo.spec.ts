@@ -61,6 +61,10 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "864");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "864");
     await expect(demo).toHaveAttribute("data-supported", "true");
+    const minimumSafeZone = page.locator("[data-minimum-safe-zone='true']");
+
+    await expect(minimumSafeZone).toHaveAttribute("data-source-width", "497");
+    await expect(minimumSafeZone).toHaveAttribute("data-source-height", "864");
 
     await page.setViewportSize({ width: 760, height: 1000 });
     await expect(demo).toHaveAttribute(
@@ -76,8 +80,19 @@ test.describe("standalone frame demos", () => {
       const safeZone = document
         .querySelector("[data-safe-zone='true']")
         ?.getBoundingClientRect();
+      const minimumSafeZone = document
+        .querySelector("[data-minimum-safe-zone='true']")
+        ?.getBoundingClientRect();
 
       return {
+        minimumSafeZone: minimumSafeZone
+          ? {
+              height: minimumSafeZone.height,
+              left: minimumSafeZone.left,
+              top: minimumSafeZone.top,
+              width: minimumSafeZone.width,
+            }
+          : null,
         safeZone: safeZone
           ? {
               height: safeZone.height,
@@ -98,6 +113,10 @@ test.describe("standalone frame demos", () => {
     expect(geometry.video?.width).toBeCloseTo(760, 0);
     expect(geometry.video?.height).toBeCloseTo(1000, 0);
     expect(geometry.video?.top).toBeCloseTo(0, 0);
+    expect(geometry.minimumSafeZone?.width).toBeCloseTo(460, 0);
+    expect(geometry.minimumSafeZone?.height).toBeCloseTo(800, 0);
+    expect(geometry.minimumSafeZone?.left).toBeCloseTo(150, 0);
+    expect(geometry.minimumSafeZone?.top).toBeCloseTo(100, 0);
     expect(geometry.safeZone?.width).toBeCloseTo(760, 0);
     expect(geometry.safeZone?.height).toBeCloseTo(800, 0);
     expect(geometry.safeZone?.top).toBeCloseTo(100, 0);
@@ -106,6 +125,27 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-supported", "true");
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "864");
+
+    const currentMinimumGeometry = await page.evaluate(() => {
+      const current = document
+        .querySelector("[data-safe-zone='true']")
+        ?.getBoundingClientRect();
+      const minimum = document
+        .querySelector("[data-minimum-safe-zone='true']")
+        ?.getBoundingClientRect();
+
+      return {
+        currentLeft: current?.left,
+        currentWidth: current?.width,
+        minimumLeft: minimum?.left,
+        minimumWidth: minimum?.width,
+      };
+    });
+
+    expect(currentMinimumGeometry.currentLeft).toBeCloseTo(0, 0);
+    expect(currentMinimumGeometry.currentWidth).toBeCloseTo(460, 0);
+    expect(currentMinimumGeometry.minimumLeft).toBeCloseTo(0, 0);
+    expect(currentMinimumGeometry.minimumWidth).toBeCloseTo(460, 0);
 
     await page.setViewportSize({ width: 450, height: 1000 });
     await expect(demo).toHaveAttribute("data-supported", "false");
