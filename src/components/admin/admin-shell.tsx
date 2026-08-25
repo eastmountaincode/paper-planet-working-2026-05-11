@@ -73,6 +73,14 @@ export function AdminShell() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/tools/video-frame"
+              target="_blank"
+              rel="noreferrer"
+              className="border border-white/20 px-3 py-2 text-sm text-white/70 transition hover:border-white/60 hover:text-white"
+            >
+              Video Frame Tools
+            </Link>
+            <Link
               href="/"
               className="border border-white/20 px-3 py-2 text-sm text-white/70 transition hover:border-white/60 hover:text-white"
             >
