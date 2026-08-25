@@ -193,6 +193,22 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   }, [demo]);
 
   useEffect(() => {
+    if (demo !== "full-bleed") {
+      return;
+    }
+
+    const className = "frame-demo-browser-scroll";
+
+    document.documentElement.classList.add(className);
+    document.body.classList.add(className);
+
+    return () => {
+      document.documentElement.classList.remove(className);
+      document.body.classList.remove(className);
+    };
+  }, [demo]);
+
+  useEffect(() => {
     if (!isPanEnabled) {
       return;
     }
@@ -228,92 +244,102 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const demoLabel = getDemoLabel(demo);
 
   return (
-    <main
-      ref={frameRef}
-      aria-label={`${demoLabel} responsive video safe-zone demo`}
-      className="frame-demo-full-height fixed left-0 top-0 w-screen overflow-hidden bg-black"
-      style={{ height: "100lvh" }}
-      data-demo={demo}
-      data-layout-mode={
-        demo === "full-bleed"
-          ? "visible-source-frame"
-          : "fixed-safe-zone"
-      }
-      data-pan-enabled={String(isPanEnabled)}
-      data-viewport-height="large"
-      data-safe-zone-visible={String(safeZoneVisible)}
-      data-safe-zone-source-height={String(Math.round(safeRect.height))}
-      data-safe-zone-source-width={String(Math.round(safeRect.width))}
-      data-source={source.key}
-      data-supported={String(isSupported)}
-    >
-      <div
-        ref={panRef}
-        aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
-        className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
-          isPanEnabled
-            ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            : "overflow-hidden"
-        }`}
-        data-pan-surface="true"
-        role={isPanEnabled ? "region" : undefined}
-        tabIndex={isPanEnabled ? 0 : undefined}
+    <>
+      <main
+        ref={frameRef}
+        aria-label={`${demoLabel} responsive video safe-zone demo`}
+        className="frame-demo-full-height fixed left-0 top-0 w-screen overflow-hidden bg-black"
+        style={{ height: "100dvh" }}
+        data-demo={demo}
+        data-layout-mode={
+          demo === "full-bleed"
+            ? "visible-source-frame"
+            : "fixed-safe-zone"
+        }
+        data-pan-enabled={String(isPanEnabled)}
+        data-viewport-height="dynamic"
+        data-safe-zone-visible={String(safeZoneVisible)}
+        data-safe-zone-source-height={String(Math.round(safeRect.height))}
+        data-safe-zone-source-width={String(Math.round(safeRect.width))}
+        data-source={source.key}
+        data-supported={String(isSupported)}
       >
-        <video
-          key={source.key}
-          ref={videoRef}
-          aria-label={`${demoLabel} video`}
-          autoPlay
-          className={
+        <div
+          ref={panRef}
+          aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
+          className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
             isPanEnabled
-              ? "pointer-events-none block h-full w-auto max-w-none select-none object-contain"
-              : "pointer-events-none absolute inset-0 size-full select-none object-cover"
-          }
-          draggable={false}
-          loop
-          muted
-          playsInline
-          preload="auto"
-          src={source.src}
-          onLoadedMetadata={resumePlayback}
-          onTimeUpdate={(event) => {
-            playbackTimeRef.current = event.currentTarget.currentTime;
-          }}
-        />
-      </div>
+              ? "touch-pan-x touch-pan-y overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              : "overflow-hidden"
+          }`}
+          data-pan-surface="true"
+          role={isPanEnabled ? "region" : undefined}
+          tabIndex={isPanEnabled ? 0 : undefined}
+        >
+          <video
+            key={source.key}
+            ref={videoRef}
+            aria-label={`${demoLabel} video`}
+            autoPlay
+            className={
+              isPanEnabled
+                ? "pointer-events-none block h-full w-auto max-w-none select-none object-contain"
+                : "pointer-events-none absolute inset-0 size-full select-none object-cover"
+            }
+            draggable={false}
+            loop
+            muted
+            playsInline
+            preload="auto"
+            src={source.src}
+            onLoadedMetadata={resumePlayback}
+            onTimeUpdate={(event) => {
+              playbackTimeRef.current = event.currentTarget.currentTime;
+            }}
+          />
+        </div>
 
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute border-2 bg-amber-300/8 shadow-[inset_0_0_0_1px_rgba(69,26,3,0.7)] ${
-          safeZoneVisible && isSupported
-            ? "border-amber-300"
-            : "border-red-400"
-        }`}
-        data-safe-zone="true"
-        style={safeRectStyle(safeRect, visibleRect)}
-      >
-        {demo === "full-bleed" ? (
-          <span className="absolute left-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-amber-100 backdrop-blur-sm">
-            {Math.round(safeRect.width)} × {Math.round(safeRect.height)}
-          </span>
-        ) : null}
-      </div>
-
-      {minimumSafeRect ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute border-x-2 border-dashed border-cyan-300 bg-cyan-300/5"
-          data-minimum-safe-zone="true"
-          data-source-height={String(Math.round(minimumSafeRect.height))}
-          data-source-width={String(Math.round(minimumSafeRect.width))}
-          style={minimumWidthStyle(minimumSafeRect, visibleRect)}
+          className={`pointer-events-none absolute border-2 bg-amber-300/8 shadow-[inset_0_0_0_1px_rgba(69,26,3,0.7)] ${
+            safeZoneVisible && isSupported
+              ? "border-amber-300"
+              : "border-red-400"
+          }`}
+          data-safe-zone="true"
+          style={safeRectStyle(safeRect, visibleRect)}
         >
-          <span className="absolute right-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-cyan-100 backdrop-blur-sm">
-            {Math.round(minimumSafeRect.width)} ×{" "}
-            {Math.round(minimumSafeRect.height)}
-          </span>
+          {demo === "full-bleed" ? (
+            <span className="absolute left-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-amber-100 backdrop-blur-sm">
+              {Math.round(safeRect.width)} × {Math.round(safeRect.height)}
+            </span>
+          ) : null}
         </div>
+
+        {minimumSafeRect ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute border-x-2 border-dashed border-cyan-300 bg-cyan-300/5"
+            data-minimum-safe-zone="true"
+            data-source-height={String(Math.round(minimumSafeRect.height))}
+            data-source-width={String(Math.round(minimumSafeRect.width))}
+            style={minimumWidthStyle(minimumSafeRect, visibleRect)}
+          >
+            <span className="absolute right-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-cyan-100 backdrop-blur-sm">
+              {Math.round(minimumSafeRect.width)} ×{" "}
+              {Math.round(minimumSafeRect.height)}
+            </span>
+          </div>
+        ) : null}
+      </main>
+
+      {demo === "full-bleed" ? (
+        <div
+          aria-hidden="true"
+          className="frame-demo-browser-scroll-spacer"
+          data-browser-chrome-scroll="true"
+        />
       ) : null}
-    </main>
+    </>
   );
 }

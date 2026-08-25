@@ -55,9 +55,31 @@ body {
   height: 100vh;
 }
 
-@supports (height: 100lvh) {
+@supports (height: 100dvh) {
   .frame-demo-full-height {
-    height: 100lvh;
+    height: 100dvh;
+  }
+}
+
+.frame-demo-browser-scroll-spacer {
+  display: none;
+}
+
+@media (max-width: 768px) and (hover: none) and (pointer: coarse) {
+  html.frame-demo-browser-scroll,
+  body.frame-demo-browser-scroll {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
+  }
+
+  .frame-demo-browser-scroll-spacer {
+    display: block;
+    height: calc(100lvh + 2px);
+    width: 1px;
   }
 }
 

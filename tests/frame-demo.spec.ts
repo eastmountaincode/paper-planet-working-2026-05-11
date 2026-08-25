@@ -63,6 +63,7 @@ test.describe("standalone frame demos", () => {
     const video = page.locator("video");
 
     await expect(demo).toHaveAttribute("data-pan-enabled", "true");
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
     await expect(video).toBeVisible();
 
     const geometry = await page.evaluate(() => {
@@ -94,6 +95,53 @@ test.describe("standalone frame demos", () => {
       .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
   });
 
+  test("touch mode lets the browser chrome collapse around the fixed demo", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: "http://localhost:3000",
+      hasTouch: true,
+      viewport: { height: 1000, width: 460 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/tools/frame-demo/full-bleed");
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+    const spacer = page.locator("[data-browser-chrome-scroll='true']");
+
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(spacer).toBeVisible();
+
+    const scrollState = await page.evaluate(() => {
+      const panSurface = document.querySelector(
+        "[data-pan-surface='true']",
+      );
+
+      return {
+        bodyOverflowY: getComputedStyle(document.body).overflowY,
+        documentOverflowY: getComputedStyle(
+          document.documentElement,
+        ).overflowY,
+        scrollHeight: document.scrollingElement?.scrollHeight,
+        touchAction: panSurface
+          ? getComputedStyle(panSurface).touchAction
+          : null,
+        viewportHeight: window.innerHeight,
+      };
+    });
+
+    expect(scrollState.bodyOverflowY).toBe("auto");
+    expect(scrollState.documentOverflowY).toBe("auto");
+    expect(scrollState.scrollHeight).toBeGreaterThan(
+      scrollState.viewportHeight,
+    );
+    expect(scrollState.touchAction).toContain("pan-x");
+    expect(scrollState.touchAction).toContain("pan-y");
+
+    await context.close();
+  });
+
   test("single-video mode reports only attainable visible source frames", async ({
     page,
   }) => {
@@ -107,7 +155,7 @@ test.describe("standalone frame demos", () => {
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
-    await expect(demo).toHaveAttribute("data-viewport-height", "large");
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
@@ -156,12 +204,12 @@ test.describe("standalone frame demos", () => {
 
       return {
         height: rect.height,
-        supportsLargeViewport: CSS.supports("height", "100lvh"),
+        supportsDynamicViewport: CSS.supports("height", "100dvh"),
         width: rect.width,
       };
     });
 
-    expect(fullBleedViewport.supportsLargeViewport).toBe(true);
+    expect(fullBleedViewport.supportsDynamicViewport).toBe(true);
     expect(fullBleedViewport.width).toBeCloseTo(1600, 0);
     expect(fullBleedViewport.height).toBeCloseTo(1000, 0);
 
