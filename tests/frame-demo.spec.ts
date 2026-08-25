@@ -63,7 +63,7 @@ test.describe("standalone frame demos", () => {
     const video = page.locator("video");
 
     await expect(demo).toHaveAttribute("data-pan-enabled", "true");
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
     await expect(video).toBeVisible();
     await expect(video).toHaveAttribute(
       "poster",
@@ -99,7 +99,7 @@ test.describe("standalone frame demos", () => {
       .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
   });
 
-  test("touch mode locks the document vertically while preserving horizontal panning", async ({
+  test("touch mode uses a scene-backed natural document for browser chrome", async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -113,15 +113,18 @@ test.describe("standalone frame demos", () => {
 
     const demo = page.locator("main[data-demo='full-bleed']");
 
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
     await expect(
       page.locator("[data-browser-chrome-scroll-tail='true']"),
-    ).toHaveCount(0);
+    ).toBeVisible();
 
     const scrollState = await page.evaluate(() => {
       const demo = document.querySelector("main[data-demo='full-bleed']");
       const panSurface = document.querySelector(
         "[data-pan-surface='true']",
+      );
+      const scrollTail = document.querySelector(
+        "[data-browser-chrome-scroll-tail='true']",
       );
       return {
         bodyOverflowY: getComputedStyle(document.body).overflowY,
@@ -147,6 +150,9 @@ test.describe("standalone frame demos", () => {
           : null,
         stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
+        tailBackgroundImage: scrollTail
+          ? getComputedStyle(scrollTail).backgroundImage
+          : null,
         overscrollBehaviorX: panSurface
           ? getComputedStyle(panSurface).overscrollBehaviorX
           : null,
@@ -160,8 +166,8 @@ test.describe("standalone frame demos", () => {
       };
     });
 
-    expect(scrollState.bodyOverflowY).toBe("hidden");
-    expect(scrollState.documentOverflowY).toBe("hidden");
+    expect(scrollState.bodyOverflowY).toBe("auto");
+    expect(scrollState.documentOverflowY).toBe("auto");
     expect(scrollState.bodyBackgroundColor).toBe("rgb(113, 137, 145)");
     expect(scrollState.documentBackgroundColor).toBe("rgb(113, 137, 145)");
     expect(scrollState.bodyBackgroundImage).toContain(
@@ -177,15 +183,18 @@ test.describe("standalone frame demos", () => {
       "home-landscape-poster.webp",
     );
     expect(scrollState.stagePosition).toBe("relative");
-    expect(scrollState.scrollHeight).toBe(scrollState.viewportHeight);
+    expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.viewportHeight);
+    expect(scrollState.tailBackgroundImage).toContain(
+      "home-landscape-poster.webp",
+    );
     expect(scrollState.overscrollBehaviorX).toBe("none");
     expect(scrollState.panBackgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(scrollState.touchAction).toContain("pan-x");
-    expect(scrollState.touchAction).not.toContain("pan-y");
+    expect(scrollState.touchAction).toContain("pan-y");
 
     await page.evaluate(() => window.scrollTo(0, 1));
 
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1);
 
     const naturalStage = await demo.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -194,7 +203,126 @@ test.describe("standalone frame demos", () => {
     });
 
     expect(naturalStage.height).toBe(1000);
-    expect(naturalStage.top).toBe(0);
+    expect(naturalStage.top).toBe(-1);
+
+    await context.close();
+  });
+
+  test("touch mode extends the video canvas to the physical screen height", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: "http://localhost:3000",
+      hasTouch: true,
+      screen: { height: 874, width: 402 },
+      viewport: { height: 760, width: 402 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/tools/frame-demo/full-bleed");
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+
+    await expect(demo).toHaveAttribute("data-browser-content-height", "760");
+    await expect(demo).toHaveAttribute("data-browser-canvas-height", "874");
+    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
+
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector("main")?.getBoundingClientRect();
+      const video = document.querySelector("video")?.getBoundingClientRect();
+
+      return {
+        innerHeight: window.innerHeight,
+        mainHeight: main?.height,
+        maxScroll:
+          (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight,
+        screenHeight: window.screen.height,
+        scrollHeight: document.scrollingElement?.scrollHeight,
+        videoHeight: video?.height,
+      };
+    });
+
+    expect(geometry).toEqual({
+      innerHeight: 760,
+      mainHeight: 874,
+      maxScroll: 115,
+      screenHeight: 874,
+      scrollHeight: 875,
+      videoHeight: 874,
+    });
+
+    await context.close();
+  });
+
+  test("the rendered large-viewport height remains the geometry source", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: "http://localhost:3000",
+      hasTouch: true,
+      screen: { height: 800, width: 460 },
+      viewport: { height: 800, width: 460 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/tools/frame-demo/full-bleed");
+    await page.addStyleTag({
+      content:
+        "main[data-demo='full-bleed'] { min-height: 1000px !important; }",
+    });
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+
+    await expect(demo).toHaveAttribute("data-browser-content-height", "800");
+    await expect(demo).toHaveAttribute("data-browser-canvas-height", "1000");
+    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
+    await expect(demo).toHaveCSS("height", "1000px");
+    await expect(page.locator("video")).toHaveCSS("height", "1000px");
+
+    await context.close();
+  });
+
+  test("split-screen touch windows do not expand to the whole device", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: "http://localhost:3000",
+      hasTouch: true,
+      screen: { height: 1200, width: 1000 },
+      viewport: { height: 800, width: 500 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/tools/frame-demo/full-bleed");
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+
+    await expect(demo).toHaveAttribute("data-browser-content-height", "800");
+    await expect(demo).toHaveAttribute("data-browser-canvas-height", "800");
+    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "675");
+
+    await context.close();
+  });
+
+  test("screen-height sizing uses the landscape device canvas", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: "http://localhost:3000",
+      hasTouch: true,
+      screen: { height: 440, width: 956 },
+      viewport: { height: 390, width: 838 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/tools/frame-demo/full-bleed");
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+
+    await expect(demo).toHaveAttribute("data-browser-content-height", "390");
+    await expect(demo).toHaveAttribute("data-browser-canvas-height", "440");
+    await expect(demo).toHaveAttribute("data-supported", "true");
+    await expect(demo).toHaveCSS("height", "440px");
 
     await context.close();
   });
@@ -211,7 +339,7 @@ test.describe("standalone frame demos", () => {
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
-    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
+    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
