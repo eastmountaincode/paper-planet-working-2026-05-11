@@ -118,6 +118,7 @@ function centerPanSurface(panSurface: HTMLDivElement | null) {
 }
 
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
+  const frameRef = useRef<HTMLElement>(null);
   const panRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playbackTimeRef = useRef(0);
@@ -153,7 +154,10 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
     const measureViewport = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
-        const nextAspect = window.innerWidth / Math.max(window.innerHeight, 1);
+        const frame = frameRef.current?.getBoundingClientRect();
+        const width = frame?.width ?? window.innerWidth;
+        const height = frame?.height ?? window.innerHeight;
+        const nextAspect = width / Math.max(height, 1);
         const nextSource = getSource(demo, nextAspect);
 
         if (nextSource.key !== sourceKeyRef.current) {
@@ -166,16 +170,23 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           sourceKeyRef.current = nextSource.key;
         }
 
-        setViewport({ height: window.innerHeight, width: window.innerWidth });
+        setViewport({ height, width });
       });
     };
 
     measureViewport();
+    const resizeObserver = new ResizeObserver(measureViewport);
+
+    if (frameRef.current) {
+      resizeObserver.observe(frameRef.current);
+    }
+
     window.addEventListener("resize", measureViewport);
     window.addEventListener("orientationchange", measureViewport);
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
       window.removeEventListener("resize", measureViewport);
       window.removeEventListener("orientationchange", measureViewport);
     };
@@ -218,8 +229,10 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
 
   return (
     <main
+      ref={frameRef}
       aria-label={`${demoLabel} responsive video safe-zone demo`}
-      className="fixed inset-0 overflow-hidden bg-black"
+      className="frame-demo-full-height fixed left-0 top-0 w-screen overflow-hidden bg-black"
+      style={{ height: "100lvh" }}
       data-demo={demo}
       data-layout-mode={
         demo === "full-bleed"
@@ -227,6 +240,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           : "fixed-safe-zone"
       }
       data-pan-enabled={String(isPanEnabled)}
+      data-viewport-height="large"
       data-safe-zone-visible={String(safeZoneVisible)}
       data-safe-zone-source-height={String(Math.round(safeRect.height))}
       data-safe-zone-source-width={String(Math.round(safeRect.width))}

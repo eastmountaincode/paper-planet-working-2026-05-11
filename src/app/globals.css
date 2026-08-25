@@ -51,6 +51,16 @@ body {
   overscroll-behavior: none;
 }
 
+.frame-demo-full-height {
+  height: 100vh;
+}
+
+@supports (height: 100lvh) {
+  .frame-demo-full-height {
+    height: 100lvh;
+  }
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;

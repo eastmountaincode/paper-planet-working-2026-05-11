@@ -28,6 +28,10 @@ test.describe("standalone frame demos", () => {
     await expect(video).not.toHaveAttribute("controls", "");
     await expect(demo.getByRole("button")).toHaveCount(0);
     await expect(demo).toHaveText("");
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+      "content",
+      /viewport-fit=cover/,
+    );
   });
 
   test("Green Room exposes the 0.75 to 0.80 handoff gap", async ({ page }) => {
@@ -48,6 +52,48 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
   });
 
+  test("full-bleed mode boots at the mobile viewport height", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 460, height: 1000 });
+    await page.goto("/tools/frame-demo/full-bleed");
+
+    const demo = page.locator("main[data-demo='full-bleed']");
+    const panSurface = page.locator("[data-pan-surface='true']");
+    const video = page.locator("video");
+
+    await expect(demo).toHaveAttribute("data-pan-enabled", "true");
+    await expect(video).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector("main")?.getBoundingClientRect();
+      const pan = document
+        .querySelector("[data-pan-surface='true']")
+        ?.getBoundingClientRect();
+      const video = document.querySelector("video")?.getBoundingClientRect();
+
+      return {
+        main: main ? { height: main.height, width: main.width } : null,
+        pan: pan ? { height: pan.height, width: pan.width } : null,
+        video: video ? { height: video.height, width: video.width } : null,
+      };
+    });
+
+    expect(geometry.main).toEqual({ height: 1000, width: 460 });
+    expect(geometry.pan).toEqual({ height: 1000, width: 460 });
+    expect(geometry.video?.height).toBeCloseTo(1000, 0);
+    expect(geometry.video?.width).toBeCloseTo(1600, 0);
+
+    await expect
+      .poll(() =>
+        panSurface.evaluate((element) => ({
+          scrollLeft: element.scrollLeft,
+          scrollWidth: element.scrollWidth,
+        })),
+      )
+      .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
+  });
+
   test("single-video mode reports only attainable visible source frames", async ({
     page,
   }) => {
@@ -61,6 +107,7 @@ test.describe("standalone frame demos", () => {
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
+    await expect(demo).toHaveAttribute("data-viewport-height", "large");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
@@ -103,6 +150,20 @@ test.describe("standalone frame demos", () => {
       });
 
     const desktopGeometry = await getSafeZoneGeometry();
+
+    const fullBleedViewport = await demo.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+
+      return {
+        height: rect.height,
+        supportsLargeViewport: CSS.supports("height", "100lvh"),
+        width: rect.width,
+      };
+    });
+
+    expect(fullBleedViewport.supportsLargeViewport).toBe(true);
+    expect(fullBleedViewport.width).toBeCloseTo(1600, 0);
+    expect(fullBleedViewport.height).toBeCloseTo(1000, 0);
 
     expect(desktopGeometry.video?.width).toBeCloseTo(1600, 0);
     expect(desktopGeometry.video?.height).toBeCloseTo(1000, 0);
