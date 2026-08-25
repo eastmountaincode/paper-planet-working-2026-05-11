@@ -47,4 +47,59 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-source", "green-landscape");
     await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
   });
+
+  test("single-video mode shrinks continuously below 0.80", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 1000 });
+    await page.goto("/tools/frame-demo/scale-down");
+
+    const demo = page.locator("main[data-demo='scale-down']");
+
+    await expect(demo).toHaveAttribute("data-source", "home-landscape");
+    await expect(demo).toHaveAttribute("data-layout-mode", "cover");
+    await expect(demo).toHaveAttribute("data-supported", "true");
+
+    await page.setViewportSize({ width: 760, height: 1000 });
+    await expect(demo).toHaveAttribute("data-layout-mode", "scale-down");
+    await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
+
+    const geometry = await page.evaluate(() => {
+      const video = document.querySelector("video")?.getBoundingClientRect();
+      const safeZone = document
+        .querySelector("[data-safe-zone='true']")
+        ?.getBoundingClientRect();
+
+      return {
+        safeZone: safeZone
+          ? {
+              height: safeZone.height,
+              top: safeZone.top,
+              width: safeZone.width,
+            }
+          : null,
+        video: video
+          ? {
+              height: video.height,
+              top: video.top,
+              width: video.width,
+            }
+          : null,
+      };
+    });
+
+    expect(geometry.video?.width).toBeCloseTo(1520, 0);
+    expect(geometry.video?.height).toBeCloseTo(950, 0);
+    expect(geometry.video?.top).toBeCloseTo(25, 0);
+    expect(geometry.safeZone?.width).toBeCloseTo(760, 0);
+    expect(geometry.safeZone?.height).toBeCloseTo(760, 0);
+    expect(geometry.safeZone?.top).toBeCloseTo(120, 0);
+
+    await page.setViewportSize({ width: 460, height: 1000 });
+    await expect(demo).toHaveAttribute("data-supported", "true");
+
+    await page.setViewportSize({ width: 450, height: 1000 });
+    await expect(demo).toHaveAttribute("data-supported", "false");
+    await expect(page.locator("[data-safe-zone='true']")).toHaveClass(
+      /border-red-400/,
+    );
+  });
 });

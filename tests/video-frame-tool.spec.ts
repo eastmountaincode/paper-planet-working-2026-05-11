@@ -15,6 +15,9 @@ test.describe("video frame checker", () => {
     await expect(
       page.getByRole("link", { name: "Open Green Room demo" }),
     ).toHaveAttribute("target", "_blank");
+    await expect(
+      page.getByRole("link", { name: "Open scale-down demo" }),
+    ).toHaveAttribute("target", "_blank");
     await page.getByRole("button", { name: "Switch point" }).click();
     await expect(
       page.getByText("This 0.75 viewport clips required content."),
