@@ -96,6 +96,21 @@ function centerPanSurface(panSurface: HTMLDivElement | null) {
     (panSurface.scrollWidth - panSurface.clientWidth) / 2;
 }
 
+function clampPanSurface(panSurface: HTMLDivElement) {
+  const maximumScroll = Math.max(
+    panSurface.scrollWidth - panSurface.clientWidth,
+    0,
+  );
+  const clampedScroll = Math.min(
+    Math.max(panSurface.scrollLeft, 0),
+    maximumScroll,
+  );
+
+  if (panSurface.scrollLeft !== clampedScroll) {
+    panSurface.scrollLeft = clampedScroll;
+  }
+}
+
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const frameRef = useRef<HTMLElement>(null);
   const panRef = useRef<HTMLDivElement>(null);
@@ -242,10 +257,11 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
           className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
             isPanEnabled
-              ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               : "overflow-hidden"
           }`}
           data-pan-surface="true"
+          onScroll={(event) => clampPanSurface(event.currentTarget)}
           role={isPanEnabled ? "region" : undefined}
           tabIndex={isPanEnabled ? 0 : undefined}
         >

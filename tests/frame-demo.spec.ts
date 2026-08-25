@@ -141,6 +141,9 @@ test.describe("standalone frame demos", () => {
         stageHeight: demo ? getComputedStyle(demo).height : null,
         stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
+        overscrollBehaviorX: panSurface
+          ? getComputedStyle(panSurface).overscrollBehaviorX
+          : null,
         touchAction: panSurface
           ? getComputedStyle(panSurface).touchAction
           : null,
@@ -162,6 +165,7 @@ test.describe("standalone frame demos", () => {
     expect(scrollState.stageHeight).toBe("1000px");
     expect(scrollState.stagePosition).toBe("relative");
     expect(scrollState.scrollHeight).toBe(scrollState.viewportHeight);
+    expect(scrollState.overscrollBehaviorX).toBe("none");
     expect(scrollState.touchAction).toContain("pan-x");
     expect(scrollState.touchAction).not.toContain("pan-y");
 
@@ -229,6 +233,21 @@ test.describe("standalone frame demos", () => {
     expect(centeredPan.clientWidth).toBeCloseTo(760, 0);
     expect(centeredPan.scrollWidth).toBeCloseTo(1600, 0);
     expect(centeredPan.scrollLeft).toBeCloseTo(420, 0);
+
+    const horizontalBounds = await panSurface.evaluate((element) => {
+      element.scrollLeft = -200;
+      const leftEdge = element.scrollLeft;
+      element.scrollLeft = element.scrollWidth + 200;
+
+      return {
+        leftEdge,
+        maximumScroll: element.scrollWidth - element.clientWidth,
+        rightEdge: element.scrollLeft,
+      };
+    });
+
+    expect(horizontalBounds.leftEdge).toBe(0);
+    expect(horizontalBounds.rightEdge).toBe(horizontalBounds.maximumScroll);
 
     await panSurface.evaluate((element) => {
       element.scrollLeft = 0;
