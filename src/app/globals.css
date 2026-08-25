@@ -81,7 +81,7 @@ body:has(main[data-demo="full-bleed"]) {
 }
 
 .frame-demo-full-bleed-stage {
-  min-height: 100vh;
+  min-height: max(100vh, var(--frame-demo-screen-height, 0px));
   background-color: #718991;
   background-image: url("/tools/frame-demo/home-landscape-poster.webp");
   background-position: center;
@@ -105,7 +105,7 @@ body:has(main[data-demo="full-bleed"]) {
   }
 
   .frame-demo-full-bleed-stage {
-    min-height: 100lvh;
+    min-height: max(100lvh, var(--frame-demo-screen-height, 0px));
   }
 
   .frame-demo-browser-scroll-tail {

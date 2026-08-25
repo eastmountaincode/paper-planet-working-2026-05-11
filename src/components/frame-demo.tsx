@@ -29,6 +29,35 @@ const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
 const PAN_MAX_VIEWPORT_WIDTH = 768;
+const MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE = 0.8;
+
+function getFullBleedCanvasHeight(
+  contentHeight: number,
+  contentWidth: number,
+) {
+  if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+    return contentHeight;
+  }
+
+  const isPortrait = contentHeight >= contentWidth;
+  const screenWidth = isPortrait
+    ? Math.min(window.screen.height, window.screen.width)
+    : Math.max(window.screen.height, window.screen.width);
+  const screenHeight = isPortrait
+    ? Math.max(window.screen.height, window.screen.width)
+    : Math.min(window.screen.height, window.screen.width);
+  // Browser chrome and safe-area insets can narrow an iPhone's landscape
+  // content viewport. A substantially narrower window is more likely iPad
+  // Split View or Stage Manager and should not inherit the whole screen.
+  if (
+    contentWidth / Math.max(screenWidth, 1) <
+    MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE
+  ) {
+    return contentHeight;
+  }
+
+  return Math.max(contentHeight, screenHeight);
+}
 
 const HOME_SOURCE: DemoSource = {
   key: "home-landscape",
@@ -125,8 +154,14 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playbackTimeRef = useRef(0);
   const sourceKeyRef = useRef<DemoSource["key"]>(HOME_SOURCE.key);
-  const [viewport, setViewport] = useState({ height: 900, width: 1600 });
-  const viewportAspect = viewport.width / viewport.height;
+  const [viewport, setViewport] = useState({
+    canvasHeight: 900,
+    contentHeight: 900,
+    measured: false,
+    requestedCanvasHeight: 900,
+    width: 1600,
+  });
+  const viewportAspect = viewport.width / viewport.canvasHeight;
   const source = getSource(demo, viewportAspect);
   const sourceAspect = source.spec.videoWidth / source.spec.videoHeight;
   const isPanEnabled =
@@ -158,8 +193,19 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       animationFrame = window.requestAnimationFrame(() => {
         const frame = frameRef.current?.getBoundingClientRect();
         const width = frame?.width ?? window.innerWidth;
-        const height = frame?.height ?? window.innerHeight;
-        const nextAspect = width / Math.max(height, 1);
+        const contentHeight =
+          demo === "full-bleed"
+            ? window.innerHeight
+            : (frame?.height ?? window.innerHeight);
+        const requestedCanvasHeight =
+          demo === "full-bleed"
+            ? getFullBleedCanvasHeight(contentHeight, width)
+            : contentHeight;
+        const canvasHeight =
+          demo === "full-bleed"
+            ? Math.max(frame?.height ?? contentHeight, requestedCanvasHeight)
+            : contentHeight;
+        const nextAspect = width / Math.max(canvasHeight, 1);
         const nextSource = getSource(demo, nextAspect);
 
         if (nextSource.key !== sourceKeyRef.current) {
@@ -172,7 +218,25 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           sourceKeyRef.current = nextSource.key;
         }
 
-        setViewport({ height, width });
+        setViewport((current) => {
+          if (
+            current.canvasHeight === canvasHeight &&
+            current.contentHeight === contentHeight &&
+            current.measured &&
+            current.requestedCanvasHeight === requestedCanvasHeight &&
+            current.width === width
+          ) {
+            return current;
+          }
+
+          return {
+            canvasHeight,
+            contentHeight,
+            measured: true,
+            requestedCanvasHeight,
+            width,
+          };
+        });
       });
     };
 
@@ -246,12 +310,23 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             : "fixed-safe-zone"
         }
         data-pan-enabled={String(isPanEnabled)}
-        data-viewport-height={demo === "full-bleed" ? "large" : "dynamic"}
+        data-browser-canvas-height={String(Math.round(viewport.canvasHeight))}
+        data-browser-content-height={String(
+          Math.round(viewport.contentHeight),
+        )}
+        data-viewport-height={demo === "full-bleed" ? "screen" : "dynamic"}
         data-safe-zone-visible={String(safeZoneVisible)}
         data-safe-zone-source-height={String(Math.round(safeRect.height))}
         data-safe-zone-source-width={String(Math.round(safeRect.width))}
         data-source={source.key}
         data-supported={String(isSupported)}
+        style={
+          demo === "full-bleed" && viewport.measured
+            ? ({
+                "--frame-demo-screen-height": `${viewport.requestedCanvasHeight}px`,
+              } as CSSProperties)
+            : undefined
+        }
       >
         <div
           ref={panRef}
