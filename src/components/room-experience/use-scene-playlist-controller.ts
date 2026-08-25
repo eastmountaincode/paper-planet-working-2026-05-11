@@ -110,6 +110,7 @@ export function useScenePlaylistController({
   const playlistAudioActive =
     hasEntered &&
     playlistEnabled &&
+    playlistVolume > 0 &&
     Boolean(activePlaylistTrack) &&
     !playlistAudioMuted &&
     !audioTransitionMuted;
@@ -329,7 +330,11 @@ export function useScenePlaylistController({
 
       const targetPlaylist = targetScene.playlist;
 
-      if (!targetPlaylist?.enabled || targetPlaylist.tracks.length === 0) {
+      if (
+        !targetPlaylist?.enabled ||
+        targetPlaylist.volume <= 0 ||
+        targetPlaylist.tracks.length === 0
+      ) {
         stopRoomPlaylistAudio(targetScene.slug);
         return;
       }
@@ -375,6 +380,10 @@ export function useScenePlaylistController({
 
   const primeScenePlaylist = useCallback(
     (targetScene: Scene) => {
+      if ((targetScene.playlist?.volume ?? 0) <= 0) {
+        return;
+      }
+
       const playback = getScenePlaylistPlayback(targetScene);
 
       if (!playback) {
@@ -392,7 +401,7 @@ export function useScenePlaylistController({
         const targetScene = runtimeScenes[slug];
         const playback = getScenePlaylistPlayback(targetScene);
 
-        if (!playback) {
+        if (!playback || playback.volume <= 0) {
           return [];
         }
 
@@ -525,7 +534,7 @@ export function useScenePlaylistController({
   ]);
 
   useEffect(() => {
-    if (!playlistEnabled) {
+    if (!playlistEnabled || playlistVolume <= 0) {
       stopRoomPlaylistAudio(scene.slug);
       return;
     }
