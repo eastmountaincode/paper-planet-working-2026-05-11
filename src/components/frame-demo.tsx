@@ -248,8 +248,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       <main
         ref={frameRef}
         aria-label={`${demoLabel} responsive video safe-zone demo`}
-        className="frame-demo-full-height fixed left-0 top-0 w-screen overflow-hidden bg-black"
-        style={{ height: "100dvh" }}
+        className="frame-demo-full-height frame-demo-scroll-stage fixed left-0 top-0 w-screen overflow-hidden bg-black"
         data-demo={demo}
         data-layout-mode={
           demo === "full-bleed"

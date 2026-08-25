@@ -95,7 +95,7 @@ test.describe("standalone frame demos", () => {
       .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
   });
 
-  test("touch mode lets the browser chrome collapse around the fixed demo", async ({
+  test("touch mode lets browser chrome collapse around the pinned video", async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -114,6 +114,7 @@ test.describe("standalone frame demos", () => {
     await expect(spacer).toBeVisible();
 
     const scrollState = await page.evaluate(() => {
+      const demo = document.querySelector("main[data-demo='full-bleed']");
       const panSurface = document.querySelector(
         "[data-pan-surface='true']",
       );
@@ -123,6 +124,8 @@ test.describe("standalone frame demos", () => {
         documentOverflowY: getComputedStyle(
           document.documentElement,
         ).overflowY,
+        stageHeight: demo ? getComputedStyle(demo).height : null,
+        stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
         touchAction: panSurface
           ? getComputedStyle(panSurface).touchAction
@@ -131,13 +134,29 @@ test.describe("standalone frame demos", () => {
       };
     });
 
-    expect(scrollState.bodyOverflowY).toBe("auto");
+    expect(scrollState.bodyOverflowY).toBe("visible");
     expect(scrollState.documentOverflowY).toBe("auto");
-    expect(scrollState.scrollHeight).toBeGreaterThan(
-      scrollState.viewportHeight,
+    expect(scrollState.stageHeight).toBe("1000px");
+    expect(scrollState.stagePosition).toBe("sticky");
+    expect(scrollState.scrollHeight).toBeGreaterThanOrEqual(
+      scrollState.viewportHeight * 3,
     );
     expect(scrollState.touchAction).toContain("pan-x");
     expect(scrollState.touchAction).toContain("pan-y");
+
+    await page.evaluate(() => window.scrollTo(0, 500));
+
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThanOrEqual(500);
+
+    const pinnedStage = await demo.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+
+      return { height: rect.height, top: rect.top };
+    });
+
+    expect(pinnedStage).toEqual({ height: 1000, top: 0 });
 
     await context.close();
   });
