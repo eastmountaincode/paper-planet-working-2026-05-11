@@ -20,7 +20,6 @@ import {
   VIDEO_FRAME_SPECS,
   VIEWPORT_PRESETS,
   type SourceRect,
-  type VideoFrameSpecKey,
 } from "@/lib/video-frame-specs";
 
 type LoadedVideo = {
@@ -33,8 +32,6 @@ type LoadedVideo = {
 };
 
 type ViewMode = "source" | "preview";
-
-const SPEC_KEYS = Object.keys(VIDEO_FRAME_SPECS) as VideoFrameSpecKey[];
 
 function percent(value: number, total: number) {
   return `${(value / Math.max(total, 1)) * 100}%`;
@@ -151,14 +148,15 @@ export function VideoSafeZoneTool() {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [video, setVideo] = useState<LoadedVideo | null>(null);
-  const [specKey, setSpecKey] =
-    useState<VideoFrameSpecKey>("single-source");
   const [viewportAspect, setViewportAspect] = useState(0.46);
   const [viewMode, setViewMode] = useState<ViewMode>("source");
   const [isDragging, setIsDragging] = useState(false);
   const [copyStatus, setCopyStatus] = useState("Copy spec");
 
-  const spec = VIDEO_FRAME_SPECS[specKey];
+  const spec =
+    video?.height && video.height > video.width
+      ? VIDEO_FRAME_SPECS["portrait-export"]
+      : VIDEO_FRAME_SPECS["landscape-export"];
   const sourceWidth = video?.width || spec.videoWidth;
   const sourceHeight = video?.height || spec.videoHeight;
   const visibleRect = useMemo(
@@ -207,10 +205,6 @@ export function VideoSafeZoneTool() {
     const element = event.currentTarget;
     const width = element.videoWidth;
     const height = element.videoHeight;
-    const matchingSpec = SPEC_KEYS.find((key) => {
-      const candidate = VIDEO_FRAME_SPECS[key];
-      return candidate.videoWidth === width && candidate.videoHeight === height;
-    });
 
     setVideo((current) =>
       current
@@ -222,10 +216,6 @@ export function VideoSafeZoneTool() {
           }
         : null,
     );
-
-    if (matchingSpec) {
-      setSpecKey(matchingSpec);
-    }
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -305,19 +295,10 @@ export function VideoSafeZoneTool() {
       />
 
       <header className="border-b border-slate-950/15 bg-[#f8f7f3] px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-[1500px] flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Paper Planet production tool
-            </p>
-            <h1 className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">
-              Video frame checker
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-              Inspect the crop and safe interaction area before an export is
-              finalized. Videos stay on this device.
-            </p>
-          </div>
+        <div className="mx-auto flex max-w-[1500px] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <h1 className="text-2xl font-semibold tracking-[-0.035em] sm:text-3xl">
+            Video frame checker
+          </h1>
           <div className="flex flex-wrap gap-2">
             {video ? (
               <button
@@ -341,7 +322,7 @@ export function VideoSafeZoneTool() {
 
       <div className="mx-auto grid max-w-[1500px] gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 self-start rounded-2xl border border-slate-950/15 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-950/10 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="border-b border-slate-950/10 p-3 sm:p-4">
             <div className="flex rounded-lg bg-slate-100 p-1">
               {(["source", "preview"] as ViewMode[]).map((mode) => (
                 <button
@@ -358,12 +339,6 @@ export function VideoSafeZoneTool() {
                   {mode === "source" ? "Source frame" : "Viewport preview"}
                 </button>
               ))}
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="inline-block size-2.5 rounded-sm border-2 border-amber-300 bg-amber-300/20" />
-              Safe interaction area
-              <span className="ml-2 inline-block size-2.5 rounded-sm border-2 border-cyan-300" />
-              Visible crop
             </div>
           </div>
 
@@ -506,50 +481,6 @@ export function VideoSafeZoneTool() {
 
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-950/15 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold">Export setup</h2>
-            <div className="mt-3 grid gap-2">
-              {SPEC_KEYS.map((key) => {
-                const candidate = VIDEO_FRAME_SPECS[key];
-                const selected = key === specKey;
-
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={selected}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      selected
-                        ? "border-slate-950 bg-slate-950 text-white"
-                        : "border-slate-200 bg-white hover:border-slate-400"
-                    }`}
-                    onClick={() => setSpecKey(key)}
-                  >
-                    <span className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold">
-                        {candidate.label}
-                      </span>
-                      <span
-                        className={`font-mono text-[11px] ${
-                          selected ? "text-white/65" : "text-slate-500"
-                        }`}
-                      >
-                        {candidate.videoWidth}×{candidate.videoHeight}
-                      </span>
-                    </span>
-                    <span
-                      className={`mt-1 block text-xs leading-5 ${
-                        selected ? "text-white/70" : "text-slate-500"
-                      }`}
-                    >
-                      {candidate.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-950/15 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Dimensions</h2>
               <button
@@ -624,19 +555,6 @@ export function VideoSafeZoneTool() {
             </section>
           ) : null}
 
-          <section className="rounded-2xl border border-cyan-900/20 bg-cyan-50 p-4 text-cyan-950 shadow-sm">
-            <h2 className="text-sm font-semibold">Decision note</h2>
-            <p className="mt-2 text-xs leading-5">
-              A single 1728 × 1920 export removes source switching, but reduces
-              the universally safe interaction region to 864 × 864. That is the
-              cleanest option if essential action fits in the center square.
-            </p>
-            <p className="mt-2 text-xs leading-5">
-              With two exports, the current 0.75 switch leaves a narrow 0.75–0.80
-              gap where the landscape square can clip. Keeping portrait through
-              0.80 closes that gap.
-            </p>
-          </section>
         </aside>
       </div>
     </main>

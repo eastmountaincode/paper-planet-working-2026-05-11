@@ -1,7 +1,4 @@
-export type VideoFrameSpecKey =
-  | "single-source"
-  | "portrait-export"
-  | "landscape-export";
+export type VideoFrameSpecKey = "portrait-export" | "landscape-export";
 
 export type SourceRect = {
   height: number;
@@ -11,8 +8,6 @@ export type SourceRect = {
 };
 
 export type VideoFrameSpec = {
-  description: string;
-  key: VideoFrameSpecKey;
   label: string;
   maxViewportAspect: number;
   minViewportAspect: number;
@@ -22,26 +17,7 @@ export type VideoFrameSpec = {
 };
 
 export const VIDEO_FRAME_SPECS: Record<VideoFrameSpecKey, VideoFrameSpec> = {
-  "single-source": {
-    description:
-      "One centered source for every screen. Ambient action can extend outside the square, but all essential content stays inside it.",
-    key: "single-source",
-    label: "One video",
-    minViewportAspect: 0.46,
-    maxViewportAspect: 2,
-    videoWidth: 1728,
-    videoHeight: 1920,
-    safeRect: {
-      x: 432,
-      y: 528,
-      width: 864,
-      height: 864,
-    },
-  },
   "portrait-export": {
-    description:
-      "The existing tall export. It preserves a larger vertical interaction area on phones.",
-    key: "portrait-export",
     label: "Portrait export",
     minViewportAspect: 0.46,
     maxViewportAspect: 0.75,
@@ -55,9 +31,6 @@ export const VIDEO_FRAME_SPECS: Record<VideoFrameSpecKey, VideoFrameSpec> = {
     },
   },
   "landscape-export": {
-    description:
-      "The existing wide export. Its 864-pixel square is fully protected from aspect ratio 0.80 through 2.00.",
-    key: "landscape-export",
     label: "Landscape export",
     minViewportAspect: 0.8,
     maxViewportAspect: 2,

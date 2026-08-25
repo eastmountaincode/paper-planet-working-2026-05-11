@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("video frame checker", () => {
-  test("shows the one-video limits and the two-export handoff gap", async ({
+  test("shows the landscape handoff gap", async ({
     page,
   }) => {
     await page.goto("/tools/video-frame");
@@ -9,9 +9,6 @@ test.describe("video frame checker", () => {
     await expect(
       page.getByRole("heading", { name: "Video frame checker" }),
     ).toBeVisible();
-    await expect(page.getByText("Videos stay on this device.")).toBeVisible();
-
-    await page.getByRole("button", { name: /^Landscape export/ }).click();
     await page.getByRole("button", { name: "Switch point" }).click();
     await expect(
       page.getByText("This 0.75 viewport clips required content."),
@@ -31,17 +28,6 @@ test.describe("video frame checker", () => {
     });
     await expect(
       page.getByText("The full interaction area survives this 0.80 viewport."),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: /^One video/ }).click();
-    await page.getByRole("button", { name: "Tall phone" }).click();
-    await expect(
-      page.getByText("The full interaction area survives this 0.46 viewport."),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: "Wide limit" }).click();
-    await expect(
-      page.getByText("The full interaction area survives this 2 viewport."),
     ).toBeVisible();
   });
 
