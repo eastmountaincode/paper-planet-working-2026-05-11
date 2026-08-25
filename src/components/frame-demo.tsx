@@ -89,16 +89,16 @@ function getDynamicSafeRect(
   viewportAspect: number,
   source: DemoSource,
 ) {
-  const size = Math.min(
+  const width = Math.min(
     source.spec.safeRect.width,
     source.spec.videoHeight * viewportAspect,
   );
 
   return {
-    height: size,
-    width: size,
-    x: (source.spec.videoWidth - size) / 2,
-    y: (source.spec.videoHeight - size) / 2,
+    height: source.spec.safeRect.height,
+    width,
+    x: (source.spec.videoWidth - width) / 2,
+    y: source.spec.safeRect.y,
   } satisfies SourceRect;
 }
 
@@ -189,7 +189,8 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         hasDynamicSafeZone ? "dynamic-safe-zone" : "fixed-safe-zone"
       }
       data-safe-zone-visible={String(safeZoneVisible)}
-      data-safe-zone-source-size={String(Math.round(safeRect.width))}
+      data-safe-zone-source-height={String(Math.round(safeRect.height))}
+      data-safe-zone-source-width={String(Math.round(safeRect.width))}
       data-source={source.key}
       data-supported={String(isSupported)}
     >
