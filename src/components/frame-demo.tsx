@@ -84,30 +84,27 @@ function safeRectStyle(
   };
 }
 
-function getFullBleedSafeRect(
-  visibleRect: SourceRect,
-  source: DemoSource,
-) {
-  return {
-    height: source.spec.safeRect.height,
-    width: visibleRect.width,
-    x: visibleRect.x,
-    y: source.spec.safeRect.y,
-  } satisfies SourceRect;
+function getMinimumSafeRect(source: DemoSource) {
+  return getVisibleSourceRect(
+    source.spec.videoWidth,
+    source.spec.videoHeight,
+    MIN_SUPPORTED_ASPECT,
+  );
 }
 
-function getMinimumSafeRect(source: DemoSource) {
-  const width = Math.min(
-    source.spec.safeRect.width,
-    source.spec.videoHeight * MIN_SUPPORTED_ASPECT,
-  );
-
+function minimumWidthStyle(
+  minimumSafeRect: SourceRect,
+  visibleRect: SourceRect,
+): CSSProperties {
   return {
-    height: source.spec.safeRect.height,
-    width,
-    x: (source.spec.videoWidth - width) / 2,
-    y: source.spec.safeRect.y,
-  } satisfies SourceRect;
+    bottom: 0,
+    left: percent(
+      minimumSafeRect.x - visibleRect.x,
+      visibleRect.width,
+    ),
+    top: 0,
+    width: percent(minimumSafeRect.width, visibleRect.width),
+  };
 }
 
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
@@ -128,9 +125,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
     viewportAspect,
   );
   const safeRect =
-    demo === "full-bleed"
-      ? getFullBleedSafeRect(visibleRect, source)
-      : source.spec.safeRect;
+    demo === "full-bleed" ? visibleRect : source.spec.safeRect;
   const minimumSafeRect =
     demo === "full-bleed" ? getMinimumSafeRect(source) : null;
   const safeZoneVisible = containsRect(visibleRect, safeRect);
@@ -194,7 +189,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       data-demo={demo}
       data-layout-mode={
         demo === "full-bleed"
-          ? "viewport-width-safe-zone"
+          ? "visible-source-frame"
           : "fixed-safe-zone"
       }
       data-safe-zone-visible={String(safeZoneVisible)}
@@ -244,7 +239,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           data-minimum-safe-zone="true"
           data-source-height={String(Math.round(minimumSafeRect.height))}
           data-source-width={String(Math.round(minimumSafeRect.width))}
-          style={safeRectStyle(minimumSafeRect, visibleRect)}
+          style={minimumWidthStyle(minimumSafeRect, visibleRect)}
         >
           <span className="absolute right-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-cyan-100 backdrop-blur-sm">
             {Math.round(minimumSafeRect.width)} ×{" "}
