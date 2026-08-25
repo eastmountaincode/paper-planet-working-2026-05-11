@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -16,7 +15,7 @@ import {
   type VideoFrameSpec,
 } from "@/lib/video-frame-specs";
 
-export type FrameDemoId = "green-room" | "home" | "scale-down";
+export type FrameDemoId = "full-bleed" | "green-room" | "home";
 
 type DemoSource = {
   key: "green-landscape" | "green-portrait" | "home-landscape";
@@ -25,7 +24,7 @@ type DemoSource = {
 };
 
 const GREEN_ROOM_SWITCH_ASPECT = 0.75;
-const SCALE_DOWN_START_ASPECT = 0.8;
+const DYNAMIC_SAFE_ZONE_START_ASPECT = 0.8;
 const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
@@ -49,7 +48,7 @@ const GREEN_PORTRAIT_SOURCE: DemoSource = {
 };
 
 function getSource(demo: FrameDemoId, viewportAspect: number) {
-  if (demo === "home" || demo === "scale-down") {
+  if (demo === "home" || demo === "full-bleed") {
     return HOME_SOURCE;
   }
 
@@ -63,8 +62,8 @@ function getDemoLabel(demo: FrameDemoId) {
     return "Green Room";
   }
 
-  if (demo === "scale-down") {
-    return "Single-video scale-down";
+  if (demo === "full-bleed") {
+    return "Single-video full-bleed";
   }
 
   return "Home";
@@ -86,33 +85,21 @@ function safeRectStyle(
   };
 }
 
-function scaleDownStyles(
-  viewportWidth: number,
-  viewportHeight: number,
+function getDynamicSafeRect(
+  viewportAspect: number,
   source: DemoSource,
 ) {
-  const scale = viewportWidth / source.spec.safeRect.width;
-  const videoWidth = source.spec.videoWidth * scale;
-  const videoHeight = source.spec.videoHeight * scale;
-  const videoLeft = (viewportWidth - videoWidth) / 2;
-  const videoTop = (viewportHeight - videoHeight) / 2;
+  const size = Math.min(
+    source.spec.safeRect.width,
+    source.spec.videoHeight * viewportAspect,
+  );
 
   return {
-    safeZone: {
-      height: source.spec.safeRect.height * scale,
-      left: videoLeft + source.spec.safeRect.x * scale,
-      top: videoTop + source.spec.safeRect.y * scale,
-      width: source.spec.safeRect.width * scale,
-    } satisfies CSSProperties,
-    video: {
-      height: videoHeight,
-      left: videoLeft,
-      maxWidth: "none",
-      objectFit: "fill",
-      top: videoTop,
-      width: videoWidth,
-    } satisfies CSSProperties,
-  };
+    height: size,
+    width: size,
+    x: (source.spec.videoWidth - size) / 2,
+    y: (source.spec.videoHeight - size) / 2,
+  } satisfies SourceRect;
 }
 
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
@@ -122,28 +109,24 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const [viewport, setViewport] = useState({ height: 900, width: 1600 });
   const viewportAspect = viewport.width / viewport.height;
   const source = getSource(demo, viewportAspect);
-  const isScaleDownMode =
-    demo === "scale-down" && viewportAspect < SCALE_DOWN_START_ASPECT;
+  const hasDynamicSafeZone =
+    demo === "full-bleed" &&
+    viewportAspect < DYNAMIC_SAFE_ZONE_START_ASPECT;
   const isSupported =
-    demo !== "scale-down" ||
+    demo !== "full-bleed" ||
     (viewport.width >= MIN_SUPPORTED_WIDTH &&
       viewportAspect >= MIN_SUPPORTED_ASPECT &&
       viewportAspect <= MAX_SUPPORTED_ASPECT);
+  const safeRect = hasDynamicSafeZone
+    ? getDynamicSafeRect(viewportAspect, source)
+    : source.spec.safeRect;
 
-  const visibleRect = useMemo(
-    () =>
-      getVisibleSourceRect(
-        source.spec.videoWidth,
-        source.spec.videoHeight,
-        viewportAspect,
-      ),
-    [source.spec, viewportAspect],
+  const visibleRect = getVisibleSourceRect(
+    source.spec.videoWidth,
+    source.spec.videoHeight,
+    viewportAspect,
   );
-  const safeZoneVisible =
-    isScaleDownMode || containsRect(visibleRect, source.spec.safeRect);
-  const scaleDownLayout = isScaleDownMode
-    ? scaleDownStyles(viewport.width, viewport.height, source)
-    : null;
+  const safeZoneVisible = containsRect(visibleRect, safeRect);
 
   useEffect(() => {
     sourceKeyRef.current = getSource(demo, 16 / 9).key;
@@ -202,8 +185,11 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       aria-label={`${demoLabel} responsive video safe-zone demo`}
       className="fixed inset-0 overflow-hidden bg-black"
       data-demo={demo}
-      data-layout-mode={isScaleDownMode ? "scale-down" : "cover"}
+      data-layout-mode={
+        hasDynamicSafeZone ? "dynamic-safe-zone" : "fixed-safe-zone"
+      }
       data-safe-zone-visible={String(safeZoneVisible)}
+      data-safe-zone-source-size={String(Math.round(safeRect.width))}
       data-source={source.key}
       data-supported={String(isSupported)}
     >
@@ -212,17 +198,12 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         ref={videoRef}
         aria-label={`${demoLabel} video`}
         autoPlay
-        className={
-          isScaleDownMode
-            ? "absolute"
-            : "absolute inset-0 size-full object-cover"
-        }
+        className="absolute inset-0 size-full object-cover"
         loop
         muted
         playsInline
         preload="auto"
         src={source.src}
-        style={scaleDownLayout?.video}
         onLoadedMetadata={resumePlayback}
         onTimeUpdate={(event) => {
           playbackTimeRef.current = event.currentTarget.currentTime;
@@ -237,10 +218,7 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             : "border-red-400"
         }`}
         data-safe-zone="true"
-        style={
-          scaleDownLayout?.safeZone ??
-          safeRectStyle(source.spec.safeRect, visibleRect)
-        }
+        style={safeRectStyle(safeRect, visibleRect)}
       />
     </main>
   );

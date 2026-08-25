@@ -319,11 +319,11 @@ export function VideoSafeZoneTool() {
             </Link>
             <Link
               className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
-              href="/tools/frame-demo/scale-down"
+              href="/tools/frame-demo/full-bleed"
               rel="noreferrer"
               target="_blank"
             >
-              Open scale-down demo
+              Open full-bleed demo
             </Link>
             {video ? (
               <button

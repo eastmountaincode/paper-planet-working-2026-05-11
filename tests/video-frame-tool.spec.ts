@@ -16,7 +16,7 @@ test.describe("video frame checker", () => {
       page.getByRole("link", { name: "Open Green Room demo" }),
     ).toHaveAttribute("target", "_blank");
     await expect(
-      page.getByRole("link", { name: "Open scale-down demo" }),
+      page.getByRole("link", { name: "Open full-bleed demo" }),
     ).toHaveAttribute("target", "_blank");
     await page.getByRole("button", { name: "Switch point" }).click();
     await expect(

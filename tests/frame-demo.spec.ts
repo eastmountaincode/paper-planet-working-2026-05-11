@@ -48,18 +48,25 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
   });
 
-  test("single-video mode shrinks continuously below 0.80", async ({ page }) => {
+  test("single-video mode stays full bleed while its safe zone contracts", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 800, height: 1000 });
-    await page.goto("/tools/frame-demo/scale-down");
+    await page.goto("/tools/frame-demo/full-bleed");
 
-    const demo = page.locator("main[data-demo='scale-down']");
+    const demo = page.locator("main[data-demo='full-bleed']");
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
-    await expect(demo).toHaveAttribute("data-layout-mode", "cover");
+    await expect(demo).toHaveAttribute("data-layout-mode", "fixed-safe-zone");
+    await expect(demo).toHaveAttribute("data-safe-zone-source-size", "864");
     await expect(demo).toHaveAttribute("data-supported", "true");
 
     await page.setViewportSize({ width: 760, height: 1000 });
-    await expect(demo).toHaveAttribute("data-layout-mode", "scale-down");
+    await expect(demo).toHaveAttribute(
+      "data-layout-mode",
+      "dynamic-safe-zone",
+    );
+    await expect(demo).toHaveAttribute("data-safe-zone-source-size", "821");
     await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
 
     const geometry = await page.evaluate(() => {
@@ -86,15 +93,16 @@ test.describe("standalone frame demos", () => {
       };
     });
 
-    expect(geometry.video?.width).toBeCloseTo(1520, 0);
-    expect(geometry.video?.height).toBeCloseTo(950, 0);
-    expect(geometry.video?.top).toBeCloseTo(25, 0);
+    expect(geometry.video?.width).toBeCloseTo(760, 0);
+    expect(geometry.video?.height).toBeCloseTo(1000, 0);
+    expect(geometry.video?.top).toBeCloseTo(0, 0);
     expect(geometry.safeZone?.width).toBeCloseTo(760, 0);
     expect(geometry.safeZone?.height).toBeCloseTo(760, 0);
     expect(geometry.safeZone?.top).toBeCloseTo(120, 0);
 
     await page.setViewportSize({ width: 460, height: 1000 });
     await expect(demo).toHaveAttribute("data-supported", "true");
+    await expect(demo).toHaveAttribute("data-safe-zone-source-size", "497");
 
     await page.setViewportSize({ width: 450, height: 1000 });
     await expect(demo).toHaveAttribute("data-supported", "false");

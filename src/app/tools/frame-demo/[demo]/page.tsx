@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Resize the window to inspect the Paper Planet video safe zone.",
 };
 
-const DEMOS = new Set<FrameDemoId>(["home", "green-room", "scale-down"]);
+const DEMOS = new Set<FrameDemoId>(["home", "green-room", "full-bleed"]);
 
 export default async function FrameDemoPage({
   params,
