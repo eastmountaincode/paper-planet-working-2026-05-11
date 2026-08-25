@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -300,6 +301,22 @@ export function VideoSafeZoneTool() {
             Video frame checker
           </h1>
           <div className="flex flex-wrap gap-2">
+            <Link
+              className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+              href="/tools/frame-demo/home"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open Home demo
+            </Link>
+            <Link
+              className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+              href="/tools/frame-demo/green-room"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open Green Room demo
+            </Link>
             {video ? (
               <button
                 type="button"
