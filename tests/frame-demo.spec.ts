@@ -55,10 +55,12 @@ test.describe("standalone frame demos", () => {
     await page.goto("/tools/frame-demo/full-bleed");
 
     const demo = page.locator("main[data-demo='full-bleed']");
+    const panSurface = page.locator("[data-pan-surface='true']");
     const safeZone = page.locator("[data-safe-zone='true']");
     const minimumSafeZone = page.locator("[data-minimum-safe-zone='true']");
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
+    await expect(demo).toHaveAttribute("data-pan-enabled", "false");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
@@ -114,6 +116,7 @@ test.describe("standalone frame demos", () => {
     expect(desktopGeometry.minimumSafeZone?.top).toBeCloseTo(0, 0);
 
     await page.setViewportSize({ width: 760, height: 1000 });
+    await expect(demo).toHaveAttribute("data-pan-enabled", "true");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
@@ -125,7 +128,7 @@ test.describe("standalone frame demos", () => {
 
     const geometry = await getSafeZoneGeometry();
 
-    expect(geometry.video?.width).toBeCloseTo(760, 0);
+    expect(geometry.video?.width).toBeCloseTo(1600, 0);
     expect(geometry.video?.height).toBeCloseTo(1000, 0);
     expect(geometry.video?.top).toBeCloseTo(0, 0);
     expect(geometry.minimumSafeZone?.width).toBeCloseTo(460, 0);
@@ -136,6 +139,30 @@ test.describe("standalone frame demos", () => {
     expect(geometry.safeZone?.height).toBeCloseTo(1000, 0);
     expect(geometry.safeZone?.left).toBeCloseTo(0, 0);
     expect(geometry.safeZone?.top).toBeCloseTo(0, 0);
+
+    const centeredPan = await panSurface.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollLeft: element.scrollLeft,
+      scrollWidth: element.scrollWidth,
+    }));
+
+    expect(centeredPan.clientWidth).toBeCloseTo(760, 0);
+    expect(centeredPan.scrollWidth).toBeCloseTo(1600, 0);
+    expect(centeredPan.scrollLeft).toBeCloseTo(420, 0);
+
+    await panSurface.evaluate((element) => {
+      element.scrollLeft = 0;
+    });
+
+    await expect
+      .poll(() => panSurface.evaluate((element) => element.scrollLeft))
+      .toBeCloseTo(0, 0);
+
+    const pannedVideoLeft = await page
+      .locator("video")
+      .evaluate((video) => video.getBoundingClientRect().left);
+
+    expect(pannedVideoLeft).toBeCloseTo(0, 0);
 
     await page.setViewportSize({ width: 460, height: 1000 });
     await expect(demo).toHaveAttribute("data-supported", "true");
@@ -165,6 +192,7 @@ test.describe("standalone frame demos", () => {
     expect(currentMinimumGeometry.minimumWidth).toBeCloseTo(460, 0);
 
     await page.setViewportSize({ width: 2000, height: 1000 });
+    await expect(demo).toHaveAttribute("data-pan-enabled", "false");
     await expect(demo).toHaveAttribute("data-supported", "true");
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "1728");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "864");

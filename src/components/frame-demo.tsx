@@ -27,6 +27,7 @@ const GREEN_ROOM_SWITCH_ASPECT = 0.75;
 const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
+const PAN_MAX_VIEWPORT_WIDTH = 768;
 
 const HOME_SOURCE: DemoSource = {
   key: "home-landscape",
@@ -107,13 +108,28 @@ function minimumWidthStyle(
   };
 }
 
+function centerPanSurface(panSurface: HTMLDivElement | null) {
+  if (!panSurface) {
+    return;
+  }
+
+  panSurface.scrollLeft =
+    (panSurface.scrollWidth - panSurface.clientWidth) / 2;
+}
+
 export function FrameDemo({ demo }: { demo: FrameDemoId }) {
+  const panRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playbackTimeRef = useRef(0);
   const sourceKeyRef = useRef<DemoSource["key"]>(HOME_SOURCE.key);
   const [viewport, setViewport] = useState({ height: 900, width: 1600 });
   const viewportAspect = viewport.width / viewport.height;
   const source = getSource(demo, viewportAspect);
+  const sourceAspect = source.spec.videoWidth / source.spec.videoHeight;
+  const isPanEnabled =
+    demo === "full-bleed" &&
+    viewport.width <= PAN_MAX_VIEWPORT_WIDTH &&
+    viewportAspect < sourceAspect;
   const isSupported =
     demo !== "full-bleed" ||
     (viewport.width >= MIN_SUPPORTED_WIDTH &&
@@ -165,12 +181,30 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
     };
   }, [demo]);
 
+  useEffect(() => {
+    if (!isPanEnabled) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      centerPanSurface(panRef.current);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [isPanEnabled, source.key]);
+
   const resumePlayback = (event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
     const savedTime = playbackTimeRef.current;
 
     if (savedTime > 0 && Number.isFinite(video.duration)) {
       video.currentTime = Math.min(savedTime, Math.max(video.duration - 0.05, 0));
+    }
+
+    if (isPanEnabled) {
+      window.requestAnimationFrame(() => {
+        centerPanSurface(panRef.current);
+      });
     }
 
     void video.play().catch(() => {
@@ -192,28 +226,47 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           ? "visible-source-frame"
           : "fixed-safe-zone"
       }
+      data-pan-enabled={String(isPanEnabled)}
       data-safe-zone-visible={String(safeZoneVisible)}
       data-safe-zone-source-height={String(Math.round(safeRect.height))}
       data-safe-zone-source-width={String(Math.round(safeRect.width))}
       data-source={source.key}
       data-supported={String(isSupported)}
     >
-      <video
-        key={source.key}
-        ref={videoRef}
-        aria-label={`${demoLabel} video`}
-        autoPlay
-        className="absolute inset-0 size-full object-cover"
-        loop
-        muted
-        playsInline
-        preload="auto"
-        src={source.src}
-        onLoadedMetadata={resumePlayback}
-        onTimeUpdate={(event) => {
-          playbackTimeRef.current = event.currentTarget.currentTime;
-        }}
-      />
+      <div
+        ref={panRef}
+        aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
+        className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
+          isPanEnabled
+            ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            : "overflow-hidden"
+        }`}
+        data-pan-surface="true"
+        role={isPanEnabled ? "region" : undefined}
+        tabIndex={isPanEnabled ? 0 : undefined}
+      >
+        <video
+          key={source.key}
+          ref={videoRef}
+          aria-label={`${demoLabel} video`}
+          autoPlay
+          className={
+            isPanEnabled
+              ? "pointer-events-none block h-full w-auto max-w-none select-none object-contain"
+              : "pointer-events-none absolute inset-0 size-full select-none object-cover"
+          }
+          draggable={false}
+          loop
+          muted
+          playsInline
+          preload="auto"
+          src={source.src}
+          onLoadedMetadata={resumePlayback}
+          onTimeUpdate={(event) => {
+            playbackTimeRef.current = event.currentTarget.currentTime;
+          }}
+        />
+      </div>
 
       <div
         aria-hidden="true"
