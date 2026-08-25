@@ -24,7 +24,6 @@ type DemoSource = {
 };
 
 const GREEN_ROOM_SWITCH_ASPECT = 0.75;
-const DYNAMIC_SAFE_ZONE_START_ASPECT = 0.8;
 const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
@@ -85,19 +84,14 @@ function safeRectStyle(
   };
 }
 
-function getDynamicSafeRect(
-  viewportAspect: number,
+function getFullBleedSafeRect(
+  visibleRect: SourceRect,
   source: DemoSource,
 ) {
-  const width = Math.min(
-    source.spec.safeRect.width,
-    source.spec.videoHeight * viewportAspect,
-  );
-
   return {
     height: source.spec.safeRect.height,
-    width,
-    x: (source.spec.videoWidth - width) / 2,
+    width: visibleRect.width,
+    x: visibleRect.x,
     y: source.spec.safeRect.y,
   } satisfies SourceRect;
 }
@@ -123,25 +117,22 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const [viewport, setViewport] = useState({ height: 900, width: 1600 });
   const viewportAspect = viewport.width / viewport.height;
   const source = getSource(demo, viewportAspect);
-  const hasDynamicSafeZone =
-    demo === "full-bleed" &&
-    viewportAspect < DYNAMIC_SAFE_ZONE_START_ASPECT;
   const isSupported =
     demo !== "full-bleed" ||
     (viewport.width >= MIN_SUPPORTED_WIDTH &&
       viewportAspect >= MIN_SUPPORTED_ASPECT &&
       viewportAspect <= MAX_SUPPORTED_ASPECT);
-  const safeRect = hasDynamicSafeZone
-    ? getDynamicSafeRect(viewportAspect, source)
-    : source.spec.safeRect;
-  const minimumSafeRect =
-    demo === "full-bleed" ? getMinimumSafeRect(source) : null;
-
   const visibleRect = getVisibleSourceRect(
     source.spec.videoWidth,
     source.spec.videoHeight,
     viewportAspect,
   );
+  const safeRect =
+    demo === "full-bleed"
+      ? getFullBleedSafeRect(visibleRect, source)
+      : source.spec.safeRect;
+  const minimumSafeRect =
+    demo === "full-bleed" ? getMinimumSafeRect(source) : null;
   const safeZoneVisible = containsRect(visibleRect, safeRect);
 
   useEffect(() => {
@@ -202,7 +193,9 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       className="fixed inset-0 overflow-hidden bg-black"
       data-demo={demo}
       data-layout-mode={
-        hasDynamicSafeZone ? "dynamic-safe-zone" : "fixed-safe-zone"
+        demo === "full-bleed"
+          ? "viewport-width-safe-zone"
+          : "fixed-safe-zone"
       }
       data-safe-zone-visible={String(safeZoneVisible)}
       data-safe-zone-source-height={String(Math.round(safeRect.height))}
@@ -236,7 +229,13 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         }`}
         data-safe-zone="true"
         style={safeRectStyle(safeRect, visibleRect)}
-      />
+      >
+        {demo === "full-bleed" ? (
+          <span className="absolute left-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-amber-100 backdrop-blur-sm">
+            {Math.round(safeRect.width)} × {Math.round(safeRect.height)}
+          </span>
+        ) : null}
+      </div>
 
       {minimumSafeRect ? (
         <div
@@ -247,8 +246,9 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           data-source-width={String(Math.round(minimumSafeRect.width))}
           style={safeRectStyle(minimumSafeRect, visibleRect)}
         >
-          <span className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-cyan-100 backdrop-blur-sm">
-            Minimum width · {Math.round(minimumSafeRect.width)} px
+          <span className="absolute right-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-cyan-100 backdrop-blur-sm">
+            {Math.round(minimumSafeRect.width)} ×{" "}
+            {Math.round(minimumSafeRect.height)}
           </span>
         </div>
       ) : null}
