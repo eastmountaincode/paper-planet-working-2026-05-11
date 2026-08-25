@@ -63,7 +63,7 @@ test.describe("standalone frame demos", () => {
     const video = page.locator("video");
 
     await expect(demo).toHaveAttribute("data-pan-enabled", "true");
-    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
     await expect(video).toBeVisible();
     await expect(video).toHaveAttribute(
       "poster",
@@ -99,7 +99,7 @@ test.describe("standalone frame demos", () => {
       .toEqual({ scrollLeft: 570, scrollWidth: 1600 });
   });
 
-  test("touch mode uses a scene-backed natural document for browser chrome", async ({
+  test("touch mode locks the document vertically while preserving horizontal panning", async ({
     browser,
   }) => {
     const context = await browser.newContext({
@@ -113,20 +113,16 @@ test.describe("standalone frame demos", () => {
 
     const demo = page.locator("main[data-demo='full-bleed']");
 
-    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
     await expect(
       page.locator("[data-browser-chrome-scroll-tail='true']"),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     const scrollState = await page.evaluate(() => {
       const demo = document.querySelector("main[data-demo='full-bleed']");
       const panSurface = document.querySelector(
         "[data-pan-surface='true']",
       );
-      const scrollTail = document.querySelector(
-        "[data-browser-chrome-scroll-tail='true']",
-      );
-
       return {
         bodyOverflowY: getComputedStyle(document.body).overflowY,
         bodyBackgroundColor: getComputedStyle(document.body).backgroundColor,
@@ -145,9 +141,6 @@ test.describe("standalone frame demos", () => {
         stageHeight: demo ? getComputedStyle(demo).height : null,
         stagePosition: demo ? getComputedStyle(demo).position : null,
         scrollHeight: document.scrollingElement?.scrollHeight,
-        tailBackgroundImage: scrollTail
-          ? getComputedStyle(scrollTail).backgroundImage
-          : null,
         touchAction: panSurface
           ? getComputedStyle(panSurface).touchAction
           : null,
@@ -155,8 +148,8 @@ test.describe("standalone frame demos", () => {
       };
     });
 
-    expect(scrollState.bodyOverflowY).toBe("auto");
-    expect(scrollState.documentOverflowY).toBe("auto");
+    expect(scrollState.bodyOverflowY).toBe("hidden");
+    expect(scrollState.documentOverflowY).toBe("hidden");
     expect(scrollState.bodyBackgroundColor).toBe("rgb(113, 137, 145)");
     expect(scrollState.documentBackgroundColor).toBe("rgb(113, 137, 145)");
     expect(scrollState.bodyBackgroundImage).toContain(
@@ -168,16 +161,13 @@ test.describe("standalone frame demos", () => {
     expect(scrollState.isRootScroller).toBe(true);
     expect(scrollState.stageHeight).toBe("1000px");
     expect(scrollState.stagePosition).toBe("relative");
-    expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.viewportHeight);
-    expect(scrollState.tailBackgroundImage).toContain(
-      "home-landscape-poster.webp",
-    );
+    expect(scrollState.scrollHeight).toBe(scrollState.viewportHeight);
     expect(scrollState.touchAction).toContain("pan-x");
-    expect(scrollState.touchAction).toContain("pan-y");
+    expect(scrollState.touchAction).not.toContain("pan-y");
 
     await page.evaluate(() => window.scrollTo(0, 1));
 
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 
     const naturalStage = await demo.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -186,131 +176,12 @@ test.describe("standalone frame demos", () => {
     });
 
     expect(naturalStage.height).toBe(1000);
-    expect(naturalStage.top).toBe(-1);
+    expect(naturalStage.top).toBe(0);
 
     await context.close();
   });
 
-  test("touch mode extends the video canvas to the physical screen height", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext({
-      baseURL: "http://localhost:3000",
-      hasTouch: true,
-      screen: { height: 874, width: 402 },
-      viewport: { height: 760, width: 402 },
-    });
-    const page = await context.newPage();
-
-    await page.goto("/tools/frame-demo/full-bleed");
-
-    const demo = page.locator("main[data-demo='full-bleed']");
-
-    await expect(demo).toHaveAttribute("data-browser-content-height", "760");
-    await expect(demo).toHaveAttribute("data-browser-canvas-height", "874");
-    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
-
-    const geometry = await page.evaluate(() => {
-      const main = document.querySelector("main")?.getBoundingClientRect();
-      const video = document.querySelector("video")?.getBoundingClientRect();
-
-      return {
-        innerHeight: window.innerHeight,
-        mainHeight: main?.height,
-        maxScroll:
-          (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight,
-        screenHeight: window.screen.height,
-        scrollHeight: document.scrollingElement?.scrollHeight,
-        videoHeight: video?.height,
-      };
-    });
-
-    expect(geometry).toEqual({
-      innerHeight: 760,
-      mainHeight: 874,
-      maxScroll: 115,
-      screenHeight: 874,
-      scrollHeight: 875,
-      videoHeight: 874,
-    });
-
-    await context.close();
-  });
-
-  test("the rendered large-viewport height remains the geometry source", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext({
-      baseURL: "http://localhost:3000",
-      hasTouch: true,
-      screen: { height: 800, width: 460 },
-      viewport: { height: 800, width: 460 },
-    });
-    const page = await context.newPage();
-
-    await page.goto("/tools/frame-demo/full-bleed");
-    await page.addStyleTag({
-      content:
-        "main[data-demo='full-bleed'] { min-height: 1000px !important; }",
-    });
-
-    const demo = page.locator("main[data-demo='full-bleed']");
-
-    await expect(demo).toHaveAttribute("data-browser-content-height", "800");
-    await expect(demo).toHaveAttribute("data-browser-canvas-height", "1000");
-    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
-    await expect(demo).toHaveCSS("height", "1000px");
-    await expect(page.locator("video")).toHaveCSS("height", "1000px");
-
-    await context.close();
-  });
-
-  test("split-screen touch windows do not expand to the whole device", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext({
-      baseURL: "http://localhost:3000",
-      hasTouch: true,
-      screen: { height: 1200, width: 1000 },
-      viewport: { height: 800, width: 500 },
-    });
-    const page = await context.newPage();
-
-    await page.goto("/tools/frame-demo/full-bleed");
-
-    const demo = page.locator("main[data-demo='full-bleed']");
-
-    await expect(demo).toHaveAttribute("data-browser-content-height", "800");
-    await expect(demo).toHaveAttribute("data-browser-canvas-height", "800");
-    await expect(demo).toHaveAttribute("data-safe-zone-source-width", "675");
-
-    await context.close();
-  });
-
-  test("screen-height sizing uses the landscape device canvas", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext({
-      baseURL: "http://localhost:3000",
-      hasTouch: true,
-      screen: { height: 440, width: 956 },
-      viewport: { height: 390, width: 838 },
-    });
-    const page = await context.newPage();
-
-    await page.goto("/tools/frame-demo/full-bleed");
-
-    const demo = page.locator("main[data-demo='full-bleed']");
-
-    await expect(demo).toHaveAttribute("data-browser-content-height", "390");
-    await expect(demo).toHaveAttribute("data-browser-canvas-height", "440");
-    await expect(demo).toHaveAttribute("data-supported", "true");
-    await expect(demo).toHaveCSS("height", "440px");
-
-    await context.close();
-  });
-
-  test("single-video mode reports only attainable visible source frames", async ({
+  test("single-video mode stays border-free while preserving panning", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1600, height: 1000 });
@@ -318,12 +189,11 @@ test.describe("standalone frame demos", () => {
 
     const demo = page.locator("main[data-demo='full-bleed']");
     const panSurface = page.locator("[data-pan-surface='true']");
-    const safeZone = page.locator("[data-safe-zone='true']");
-    const minimumSafeZone = page.locator("[data-minimum-safe-zone='true']");
+    const video = page.locator("video");
 
     await expect(demo).toHaveAttribute("data-source", "home-landscape");
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
-    await expect(demo).toHaveAttribute("data-viewport-height", "screen");
+    await expect(demo).toHaveAttribute("data-viewport-height", "dynamic");
     await expect(demo).toHaveAttribute(
       "data-layout-mode",
       "visible-source-frame",
@@ -331,91 +201,24 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "1728");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "1080");
     await expect(demo).toHaveAttribute("data-supported", "true");
-    await expect(safeZone).toHaveText("1728 × 1080");
+    await expect(page.locator("[data-safe-zone='true']")).toHaveCount(0);
+    await expect(page.locator("[data-minimum-safe-zone='true']")).toHaveCount(
+      0,
+    );
 
-    await expect(minimumSafeZone).toHaveAttribute("data-source-width", "497");
-    await expect(minimumSafeZone).toHaveAttribute("data-source-height", "1080");
-    await expect(minimumSafeZone).toHaveText("497 × 1080");
-    await expect(page.getByText(/Minimum width/i)).toHaveCount(0);
-
-    const getSafeZoneGeometry = () =>
-      page.evaluate(() => {
-        const video = document.querySelector("video")?.getBoundingClientRect();
-        const safeZone = document
-          .querySelector("[data-safe-zone='true']")
-          ?.getBoundingClientRect();
-        const minimumSafeZone = document
-          .querySelector("[data-minimum-safe-zone='true']")
-          ?.getBoundingClientRect();
-
-        const toGeometry = (rect?: DOMRect) =>
-          rect
-            ? {
-                height: rect.height,
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-              }
-            : null;
-
-        return {
-          minimumSafeZone: toGeometry(minimumSafeZone),
-          safeZone: toGeometry(safeZone),
-          video: toGeometry(video),
-        };
-      });
-
-    const desktopGeometry = await getSafeZoneGeometry();
-
-    const fullBleedViewport = await demo.evaluate((element) => {
+    const desktopGeometry = await video.evaluate((element) => {
       const rect = element.getBoundingClientRect();
 
-      return {
-        height: rect.height,
-        supportsDynamicViewport: CSS.supports("height", "100dvh"),
-        width: rect.width,
-      };
+      return { height: rect.height, width: rect.width };
     });
 
-    expect(fullBleedViewport.supportsDynamicViewport).toBe(true);
-    expect(fullBleedViewport.width).toBeCloseTo(1600, 0);
-    expect(fullBleedViewport.height).toBeCloseTo(1000, 0);
-
-    expect(desktopGeometry.video?.width).toBeCloseTo(1600, 0);
-    expect(desktopGeometry.video?.height).toBeCloseTo(1000, 0);
-    expect(desktopGeometry.safeZone?.width).toBeCloseTo(1600, 0);
-    expect(desktopGeometry.safeZone?.height).toBeCloseTo(1000, 0);
-    expect(desktopGeometry.safeZone?.left).toBeCloseTo(0, 0);
-    expect(desktopGeometry.safeZone?.top).toBeCloseTo(0, 0);
-    expect(desktopGeometry.minimumSafeZone?.width).toBeCloseTo(460, 0);
-    expect(desktopGeometry.minimumSafeZone?.height).toBeCloseTo(1000, 0);
-    expect(desktopGeometry.minimumSafeZone?.left).toBeCloseTo(570, 0);
-    expect(desktopGeometry.minimumSafeZone?.top).toBeCloseTo(0, 0);
+    expect(desktopGeometry.width).toBeCloseTo(1600, 0);
+    expect(desktopGeometry.height).toBeCloseTo(1000, 0);
 
     await page.setViewportSize({ width: 760, height: 1000 });
     await expect(demo).toHaveAttribute("data-pan-enabled", "true");
-    await expect(demo).toHaveAttribute(
-      "data-layout-mode",
-      "visible-source-frame",
-    );
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "821");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "1080");
-    await expect(demo).toHaveAttribute("data-safe-zone-visible", "true");
-    await expect(safeZone).toHaveText("821 × 1080");
-
-    const geometry = await getSafeZoneGeometry();
-
-    expect(geometry.video?.width).toBeCloseTo(1600, 0);
-    expect(geometry.video?.height).toBeCloseTo(1000, 0);
-    expect(geometry.video?.top).toBeCloseTo(0, 0);
-    expect(geometry.minimumSafeZone?.width).toBeCloseTo(460, 0);
-    expect(geometry.minimumSafeZone?.height).toBeCloseTo(1000, 0);
-    expect(geometry.minimumSafeZone?.left).toBeCloseTo(150, 0);
-    expect(geometry.minimumSafeZone?.top).toBeCloseTo(0, 0);
-    expect(geometry.safeZone?.width).toBeCloseTo(760, 0);
-    expect(geometry.safeZone?.height).toBeCloseTo(1000, 0);
-    expect(geometry.safeZone?.left).toBeCloseTo(0, 0);
-    expect(geometry.safeZone?.top).toBeCloseTo(0, 0);
 
     const centeredPan = await panSurface.evaluate((element) => ({
       clientWidth: element.clientWidth,
@@ -435,9 +238,9 @@ test.describe("standalone frame demos", () => {
       .poll(() => panSurface.evaluate((element) => element.scrollLeft))
       .toBeCloseTo(0, 0);
 
-    const pannedVideoLeft = await page
-      .locator("video")
-      .evaluate((video) => video.getBoundingClientRect().left);
+    const pannedVideoLeft = await video.evaluate(
+      (element) => element.getBoundingClientRect().left,
+    );
 
     expect(pannedVideoLeft).toBeCloseTo(0, 0);
 
@@ -445,40 +248,15 @@ test.describe("standalone frame demos", () => {
     await expect(demo).toHaveAttribute("data-supported", "true");
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "497");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "1080");
-    await expect(safeZone).toHaveText("497 × 1080");
-
-    const currentMinimumGeometry = await page.evaluate(() => {
-      const current = document
-        .querySelector("[data-safe-zone='true']")
-        ?.getBoundingClientRect();
-      const minimum = document
-        .querySelector("[data-minimum-safe-zone='true']")
-        ?.getBoundingClientRect();
-
-      return {
-        currentLeft: current?.left,
-        currentWidth: current?.width,
-        minimumLeft: minimum?.left,
-        minimumWidth: minimum?.width,
-      };
-    });
-
-    expect(currentMinimumGeometry.currentLeft).toBeCloseTo(0, 0);
-    expect(currentMinimumGeometry.currentWidth).toBeCloseTo(460, 0);
-    expect(currentMinimumGeometry.minimumLeft).toBeCloseTo(0, 0);
-    expect(currentMinimumGeometry.minimumWidth).toBeCloseTo(460, 0);
 
     await page.setViewportSize({ width: 2000, height: 1000 });
     await expect(demo).toHaveAttribute("data-pan-enabled", "false");
     await expect(demo).toHaveAttribute("data-supported", "true");
     await expect(demo).toHaveAttribute("data-safe-zone-source-width", "1728");
     await expect(demo).toHaveAttribute("data-safe-zone-source-height", "864");
-    await expect(safeZone).toHaveText("1728 × 864");
 
     await page.setViewportSize({ width: 450, height: 1000 });
     await expect(demo).toHaveAttribute("data-supported", "false");
-    await expect(page.locator("[data-safe-zone='true']")).toHaveClass(
-      /border-red-400/,
-    );
+    await expect(page.locator("[data-safe-zone='true']")).toHaveCount(0);
   });
 });

@@ -29,35 +29,6 @@ const MIN_SUPPORTED_ASPECT = 0.46;
 const MIN_SUPPORTED_WIDTH = 320;
 const MAX_SUPPORTED_ASPECT = 2;
 const PAN_MAX_VIEWPORT_WIDTH = 768;
-const MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE = 0.8;
-
-function getFullBleedCanvasHeight(
-  contentHeight: number,
-  contentWidth: number,
-) {
-  if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
-    return contentHeight;
-  }
-
-  const isPortrait = contentHeight >= contentWidth;
-  const screenWidth = isPortrait
-    ? Math.min(window.screen.height, window.screen.width)
-    : Math.max(window.screen.height, window.screen.width);
-  const screenHeight = isPortrait
-    ? Math.max(window.screen.height, window.screen.width)
-    : Math.min(window.screen.height, window.screen.width);
-  // Browser chrome and safe-area insets can narrow an iPhone's landscape
-  // content viewport. A substantially narrower window is more likely iPad
-  // Split View or Stage Manager and should not inherit the whole screen.
-  if (
-    contentWidth / Math.max(screenWidth, 1) <
-    MIN_FULLSCREEN_SCREEN_WIDTH_COVERAGE
-  ) {
-    return contentHeight;
-  }
-
-  return Math.max(contentHeight, screenHeight);
-}
 
 const HOME_SOURCE: DemoSource = {
   key: "home-landscape",
@@ -116,29 +87,6 @@ function safeRectStyle(
   };
 }
 
-function getMinimumSafeRect(source: DemoSource) {
-  return getVisibleSourceRect(
-    source.spec.videoWidth,
-    source.spec.videoHeight,
-    MIN_SUPPORTED_ASPECT,
-  );
-}
-
-function minimumWidthStyle(
-  minimumSafeRect: SourceRect,
-  visibleRect: SourceRect,
-): CSSProperties {
-  return {
-    bottom: 0,
-    left: percent(
-      minimumSafeRect.x - visibleRect.x,
-      visibleRect.width,
-    ),
-    top: 0,
-    width: percent(minimumSafeRect.width, visibleRect.width),
-  };
-}
-
 function centerPanSurface(panSurface: HTMLDivElement | null) {
   if (!panSurface) {
     return;
@@ -155,13 +103,10 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   const playbackTimeRef = useRef(0);
   const sourceKeyRef = useRef<DemoSource["key"]>(HOME_SOURCE.key);
   const [viewport, setViewport] = useState({
-    canvasHeight: 900,
-    contentHeight: 900,
-    measured: false,
-    requestedCanvasHeight: 900,
+    height: 900,
     width: 1600,
   });
-  const viewportAspect = viewport.width / viewport.canvasHeight;
+  const viewportAspect = viewport.width / viewport.height;
   const source = getSource(demo, viewportAspect);
   const sourceAspect = source.spec.videoWidth / source.spec.videoHeight;
   const isPanEnabled =
@@ -180,8 +125,6 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
   );
   const safeRect =
     demo === "full-bleed" ? visibleRect : source.spec.safeRect;
-  const minimumSafeRect =
-    demo === "full-bleed" ? getMinimumSafeRect(source) : null;
   const safeZoneVisible = containsRect(visibleRect, safeRect);
 
   useEffect(() => {
@@ -193,19 +136,8 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
       animationFrame = window.requestAnimationFrame(() => {
         const frame = frameRef.current?.getBoundingClientRect();
         const width = frame?.width ?? window.innerWidth;
-        const contentHeight =
-          demo === "full-bleed"
-            ? window.innerHeight
-            : (frame?.height ?? window.innerHeight);
-        const requestedCanvasHeight =
-          demo === "full-bleed"
-            ? getFullBleedCanvasHeight(contentHeight, width)
-            : contentHeight;
-        const canvasHeight =
-          demo === "full-bleed"
-            ? Math.max(frame?.height ?? contentHeight, requestedCanvasHeight)
-            : contentHeight;
-        const nextAspect = width / Math.max(canvasHeight, 1);
+        const height = frame?.height ?? window.innerHeight;
+        const nextAspect = width / Math.max(height, 1);
         const nextSource = getSource(demo, nextAspect);
 
         if (nextSource.key !== sourceKeyRef.current) {
@@ -219,23 +151,11 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
         }
 
         setViewport((current) => {
-          if (
-            current.canvasHeight === canvasHeight &&
-            current.contentHeight === contentHeight &&
-            current.measured &&
-            current.requestedCanvasHeight === requestedCanvasHeight &&
-            current.width === width
-          ) {
+          if (current.height === height && current.width === width) {
             return current;
           }
 
-          return {
-            canvasHeight,
-            contentHeight,
-            measured: true,
-            requestedCanvasHeight,
-            width,
-          };
+          return { height, width };
         });
       });
     };
@@ -310,30 +230,19 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
             : "fixed-safe-zone"
         }
         data-pan-enabled={String(isPanEnabled)}
-        data-browser-canvas-height={String(Math.round(viewport.canvasHeight))}
-        data-browser-content-height={String(
-          Math.round(viewport.contentHeight),
-        )}
-        data-viewport-height={demo === "full-bleed" ? "screen" : "dynamic"}
+        data-viewport-height="dynamic"
         data-safe-zone-visible={String(safeZoneVisible)}
         data-safe-zone-source-height={String(Math.round(safeRect.height))}
         data-safe-zone-source-width={String(Math.round(safeRect.width))}
         data-source={source.key}
         data-supported={String(isSupported)}
-        style={
-          demo === "full-bleed" && viewport.measured
-            ? ({
-                "--frame-demo-screen-height": `${viewport.requestedCanvasHeight}px`,
-              } as CSSProperties)
-            : undefined
-        }
       >
         <div
           ref={panRef}
           aria-label={isPanEnabled ? "Scrollable video panorama" : undefined}
           className={`absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cyan-300 ${
             isPanEnabled
-              ? "touch-pan-x touch-pan-y overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ? "touch-pan-x overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               : "overflow-hidden"
           }`}
           data-pan-surface="true"
@@ -364,47 +273,19 @@ export function FrameDemo({ demo }: { demo: FrameDemoId }) {
           />
         </div>
 
-        <div
-          aria-hidden="true"
-          className={`pointer-events-none absolute border-2 bg-amber-300/8 shadow-[inset_0_0_0_1px_rgba(69,26,3,0.7)] ${
-            safeZoneVisible && isSupported
-              ? "border-amber-300"
-              : "border-red-400"
-          }`}
-          data-safe-zone="true"
-          style={safeRectStyle(safeRect, visibleRect)}
-        >
-          {demo === "full-bleed" ? (
-            <span className="absolute left-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-amber-100 backdrop-blur-sm">
-              {Math.round(safeRect.width)} × {Math.round(safeRect.height)}
-            </span>
-          ) : null}
-        </div>
-
-        {minimumSafeRect ? (
+        {demo !== "full-bleed" ? (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute border-x-2 border-dashed border-cyan-300 bg-cyan-300/5"
-            data-minimum-safe-zone="true"
-            data-source-height={String(Math.round(minimumSafeRect.height))}
-            data-source-width={String(Math.round(minimumSafeRect.width))}
-            style={minimumWidthStyle(minimumSafeRect, visibleRect)}
-          >
-            <span className="absolute right-2 top-2 whitespace-nowrap bg-slate-950/75 px-2 py-1 font-mono text-[10px] text-cyan-100 backdrop-blur-sm">
-              {Math.round(minimumSafeRect.width)} ×{" "}
-              {Math.round(minimumSafeRect.height)}
-            </span>
-          </div>
+            className={`pointer-events-none absolute border-2 bg-amber-300/8 shadow-[inset_0_0_0_1px_rgba(69,26,3,0.7)] ${
+              safeZoneVisible && isSupported
+                ? "border-amber-300"
+                : "border-red-400"
+            }`}
+            data-safe-zone="true"
+            style={safeRectStyle(safeRect, visibleRect)}
+          />
         ) : null}
       </main>
-
-      {demo === "full-bleed" ? (
-        <div
-          aria-hidden="true"
-          className="frame-demo-browser-scroll-tail"
-          data-browser-chrome-scroll-tail="true"
-        />
-      ) : null}
     </>
   );
 }
